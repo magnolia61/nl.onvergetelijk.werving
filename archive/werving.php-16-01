@@ -1,0 +1,1645 @@
+<?php
+
+require_once 'werving.civix.php';
+
+use CRM_Werving_ExtensionUtil as E;
+
+/**
+ * Implements hook_civicrm_config().
+ *
+ * @link https://docs.civicrm.org/dev/en/latest/hooks/hook_civicrm_config/
+ */
+function werving_civicrm_config(&$config): void {
+  _werving_civix_civicrm_config($config);
+}
+
+/**
+ * Implements hook_civicrm_install().
+ *
+ * @link https://docs.civicrm.org/dev/en/latest/hooks/hook_civicrm_install
+ */
+function werving_civicrm_install(): void {
+  _werving_civix_civicrm_install();
+}
+
+/**
+ * Implements hook_civicrm_enable().
+ *
+ * @link https://docs.civicrm.org/dev/en/latest/hooks/hook_civicrm_enable
+ */
+function werving_civicrm_enable(): void {
+  _werving_civix_civicrm_enable();
+}
+
+function werving_civicrm_customPre(string $op, int $groupID, int $entityID, array &$params): void {
+
+    $extdebug   = 3;  //  1 = basic // 2 = verbose // 3 = params / 4 = results
+    $apidebug   = FALSE;
+
+    if ($op != 'create' && $op != 'edit') { //    did we just create or edit a custom object?
+        wachthond($extdebug,4, "########################################################################");
+        wachthond($extdebug,4, "### WERVING [PRE] EXIT: op != create OR op != edit", "(op: $op)");
+        wachthond($extdebug,4, "########################################################################");
+        return; //  if not, get out of here
+    }
+
+    ##########################################################################################
+    ### RETURN IF ONLY VAKANTIEREGIO IS UPDATED
+    ##########################################################################################        
+
+    $arraysize = sizeof($params);
+
+    if ($arraysize == 1 AND $params[0]['column_name'] == 'vakantieregio_1949') {
+        return;
+    }
+
+    $extwrite               = 1;
+    $extwerving             = 1;
+    $profilewerving         = array(270);
+
+    if (in_array($groupID, $profilewerving))  {
+
+        $contact_id = $entityID;
+
+        $today_datetime         = date("Y-m-d H:i:s");
+        $today_datetime_past    = date('Y-m-d H:i:s', strtotime('-50 year', strtotime($today_datetime)) );
+        wachthond($extdebug,4, 'today_datetime_past',       $today_datetime_past);
+
+        wachthond($extdebug,1, "########################################################################");
+        wachthond($extdebug,1, "### WERVING [PRE] START BELANGSTELLING / MEE VOOR $entityID", "[groupID: $groupID / op: $op]");
+        wachthond($extdebug,3, "########################################################################");
+
+    } else {
+        wachthond($extdebug,4, "########################################################################");
+        wachthond($extdebug,4, "### WERVING [PRE] EXIT: groupID ($groupID) not in allowed list (profilewerving)", $profilewerving);
+        wachthond($extdebug,4, "########################################################################");
+        return; //  if not, get out of here
+    }
+
+    if (in_array($groupID, $profilewerving)) {
+
+        wachthond($extdebug,1, "########################################################################");
+        wachthond($extdebug,1, "### WERVING [PRE] 1.1 GET VALUES FROM PARAMS", "[groupID: $groupID / op: $op]");
+        wachthond($extdebug,1, "########################################################################");
+
+        wachthond($extdebug,4, "entityid",          $entityID);
+        wachthond($extdebug,2, "params (size)",     $arraysize);
+
+        if ($arraysize == 1) {
+
+            wachthond($extdebug,1, "########################################################################");
+            wachthond($extdebug,1, "### WERVING [PRE] 1.1 params array to small > EXIT", "[params: $params]");
+            wachthond($extdebug,1, "########################################################################");
+
+            wachthond($extdebug,1, "params",        $params);
+
+            return;
+
+        } else {
+            wachthond($extdebug,3, "params",        $params);
+        }
+
+        foreach($params as $i=>$item) {
+
+            if ( !isset($indexed[$i][$item['id']]) ) {
+                $indexed[$i]['key']         = $i;
+                $indexed[$i]['entity_id']   = $item['entity_id']    ?? NULL;
+                $indexed[$i]['column_name'] = $item['column_name']  ?? NULL;
+                $indexed[$i]['table_name']  = $item['table_name']   ?? NULL;
+                $indexed[$i]['value']       = $item['value']        ?? NULL;
+            }
+
+            if (!isset($key_leeftijd_decimalen[$i])   AND $item['column_name'] == "leeftijd_decimalen_1665"   ) {   $all_leeftijd_decimalen[]   = $i;}
+            if (!isset($key_leeftijd_rondjaren[$i])   AND $item['column_name'] == "leeftijd_rondjaren_1666"   ) {   $all_leeftijd_rondjaren[]   = $i;}     
+            if (!isset($key_nextkamp_decimalen[$i])   AND $item['column_name'] == "nextkamp_decimalen_1580"   ) {   $all_nextkamp_decimalen[]   = $i;}
+            if (!isset($key_nextkamp_rondjaren[$i])   AND $item['column_name'] == "nextkamp_rondjaren_1578"   ) {   $all_nextkamp_rondjaren[]   = $i;}
+            if (!isset($key_nextkamp_rondmaand[$i])   AND $item['column_name'] == "nextkamp_rondmaand_1579"   ) {   $all_nextkamp_rondmaand[]   = $i;}
+
+            if (!isset($key_datum_belangstelling[$i]) AND $item['column_name'] == "datum_belangstelling_647"  ) {   $all_datum_belangstelling[] = $i;}
+            if (!isset($key_leeftijdsgroep[$i])       AND $item['column_name'] == "welke_leeftijdsgroep_378"  ) {   $all_leeftijdsgroep[]       = $i;}
+            if (!isset($key_kampweek[$i])             AND $item['column_name'] == "welke_kampweek_377"        ) {   $all_kampweek[]             = $i;}
+            if (!isset($key_kampweken[$i])            AND $item['column_name'] == "welke_kampweken_1172"      ) {   $all_kampweken[]            = $i;}
+            if (!isset($key_mee_update[$i])           AND $item['column_name'] == "mee_update_1614"           ) {   $all_mee_update[]           = $i;}
+            if (!isset($key_mee_update_year[$i])      AND $item['column_name'] == "mee_komendkampjaar_1619"   ) {   $all_mee_update_year[]      = $i;}
+            if (!isset($key_mee_verwachting[$i])      AND $item['column_name'] == "mee_verwachting_1615"      ) {   $all_mee_verwachting[]      = $i;}
+            if (!isset($key_mee_toelichting[$i])      AND $item['column_name'] == "mee_toelichting_1616"      ) {   $all_mee_toelichting[]      = $i;}
+            if (!isset($key_mee_status[$i])           AND $item['column_name'] == "mee_status_1967"           ) {   $all_mee_status[]           = $i;}
+            if (!isset($key_mee_notities[$i])         AND $item['column_name'] == "mee_notities_1764"         ) {   $all_mee_notities[]         = $i;}
+            if (!isset($key_vakantieregio[$i])        AND $item['column_name'] == "vakantieregio_1949"        ) {   $all_vakantieregio[]        = $i;}
+
+        }
+
+        wachthond($extdebug,4, "indexed", $indexed);
+
+        $key_leeftijd_decimalen     = $all_leeftijd_decimalen[0];
+        $key_leeftijd_rondjaren     = $all_leeftijd_rondjaren[0];
+
+        $key_nextkamp_decimalen     = $all_nextkamp_decimalen[0];
+        $key_nextkamp_rondjaren     = $all_nextkamp_rondjaren[0];
+        $key_nextkamp_rondmaand     = $all_nextkamp_rondmaand[0];
+
+        $key_datum_belangstelling   = $all_datum_belangstelling[0];
+        $key_leeftijdsgroep         = $all_leeftijdsgroep[0];
+        $key_kampweek               = $all_kampweek[0];
+        $key_kampweken              = $all_kampweken[0];
+        $key_mee_update             = $all_mee_update[0];
+        $key_mee_update_year        = $all_mee_update_year[0];
+        $key_mee_verwachting        = $all_mee_verwachting[0];
+        $key_mee_toelichting        = $all_mee_toelichting[0];
+        $key_mee_status             = $all_mee_status[0];        
+        $key_mee_notities           = $all_mee_notities[0];
+        $key_vakantieregio          = $all_vakantieregio[0];
+
+        wachthond($extdebug,3, "key_leeftijd_decimalen",    $key_leeftijd_decimalen);
+        wachthond($extdebug,3, "key_leeftijd_rondjaren",    $key_leeftijd_rondjaren);
+
+        wachthond($extdebug,3, "key_nextkamp_decimalen",    $key_nextkamp_decimalen);
+        wachthond($extdebug,3, "key_nextkamp_rondjaren",    $key_nextkamp_rondjaren);
+        wachthond($extdebug,3, "key_nextkamp_rondmaand",    $key_nextkamp_rondmaand);
+
+        wachthond($extdebug,3, "key_datum_belangstelling",  $key_datum_belangstelling);
+        wachthond($extdebug,3, "key_leeftijdsgroep",        $key_leeftijdsgroep);
+        wachthond($extdebug,3, "key_kampweek",              $key_kampweek);
+        wachthond($extdebug,3, "key_kampweken",             $key_kampweken);
+        wachthond($extdebug,3, "key_mee_update",            $key_mee_update);
+        wachthond($extdebug,3, "key_mee_update_year",       $key_mee_update_year);
+        wachthond($extdebug,3, "key_mee_verwachting",       $key_mee_verwachting);
+        wachthond($extdebug,3, "key_mee_toelichting",       $key_mee_toelichting);
+        wachthond($extdebug,3, "key_mee_status",            $key_mee_status);
+        wachthond($extdebug,3, "key_mee_notities",          $key_mee_notities);
+        wachthond($extdebug,3, "key_vakantieregio",         $key_vakantieregio);
+
+        ##########################################################################################
+        ### GET LEEFTIJD CURRENT [DECIMALEN]
+        ##########################################################################################        
+
+        if ($key_leeftijd_decimalen >= 0) {
+            $raw_leeftijd_decimalen           = $params[$key_leeftijd_decimalen]['value']   ?? NULL;
+            $new_leeftijd_decimalen           = $raw_leeftijd_decimalen;
+            wachthond($extdebug,2, "org_leeftijd_decimalen", $org_leeftijd_decimalen);
+        }
+
+        ##########################################################################################
+        ### GET LEEFTIJD CURRENT [RONDJAREN]
+        ##########################################################################################        
+
+        if ($key_leeftijd_decimalen >= 0) {
+            $raw_leeftijd_decimalen           = $params[$key_leeftijd_decimalen]['value']   ?? NULL;
+            $new_leeftijd_decimalen           = $raw_leeftijd_decimalen;
+            wachthond($extdebug,2, "org_leeftijd_decimalen", $org_leeftijd_decimalen);
+        }
+
+        ##########################################################################################
+        ### GET LEEFTIJD NEXTKAMP [DECIMALEN]
+        ##########################################################################################        
+
+        if ($key_nextkamp_decimalen >= 0) {
+            $raw_nextkamp_decimalen           = $params[$key_nextkamp_decimalen]['value']   ?? NULL;
+            $new_nextkamp_decimalen           = $raw_nextkamp_decimalen;
+            wachthond($extdebug,2, "org_nextkamp_decimalen", $org_nextkamp_decimalen);
+        }
+
+        ##########################################################################################
+        ### GET LEEFTIJD NEXTKAMP [RONDJAREN]
+        ##########################################################################################        
+
+        if ($key_nextkamp_rondjaren >= 0) {
+            $raw_nextkamp_rondjaren           = $params[$key_nextkamp_rondjaren]['value']   ?? NULL;
+            $new_nextkamp_rondjaren           = $raw_nextkamp_rondjaren;
+            wachthond($extdebug,2, "org_nextkamp_rondjaren", $org_nextkamp_rondjaren);
+        }
+
+        ##########################################################################################
+        ### GET LEEFTIJD NEXTKAMP [RONDMAAND]
+        ##########################################################################################        
+
+        if ($key_nextkamp_rondmaand >= 0) {
+            $raw_nextkamp_rondmaand           = $params[$key_nextkamp_rondmaand]['value']   ?? NULL;
+            $new_nextkamp_rondmaand           = $raw_nextkamp_rondmaand;
+            wachthond($extdebug,2, "org_nextkamp_rondmaand", $org_nextkamp_rondmaand);
+        }
+
+        ##########################################################################################
+        ### GET DATUM BELANGSTELLING
+        ##########################################################################################        
+
+        if ($key_datum_belangstelling >= 0) {
+            $pid_datum_belangstelling  = $params[$key_datum_belangstelling]['entity_id']    ?? NULL;
+            $raw_datum_belangstelling  = $params[$key_datum_belangstelling]['value']        ?? NULL;
+            $new_datum_belangstelling  = strtotime($raw_datum_belangstelling);
+            $org_datum_belangstelling  = date("Y-m-d H:i:s", $new_datum_belangstelling);  
+            wachthond($extdebug,4, "key_datum_belangstelling", $key_datum_belangstelling);
+            wachthond($extdebug,4, "raw_datum_belangstelling", $raw_datum_belangstelling);
+            wachthond($extdebug,2, "org_datum_belangstelling", $org_datum_belangstelling);
+            wachthond($extdebug,4, "pid_datum_belangstelling", $pid_datum_belangstelling);
+            $datum_belangstelling       = $org_datum_belangstelling;
+        }
+
+        ##########################################################################################
+        ### GET LEEFTIJDSGROEP
+        ##########################################################################################        
+
+        if ($key_leeftijdsgroep >= 0) {
+            $raw_leeftijdsgroep     = $params[$key_leeftijdsgroep]['value']                 ?? NULL;
+            $new_leeftijdsgroep     = explode('', $raw_leeftijdsgroep);
+            $org_leeftijdsgroep     = $new_leeftijdsgroep;  
+            $belangstelling_groep   = $org_leeftijdsgroep;
+            wachthond($extdebug,2, "org_leeftijdsgroep", $org_leeftijdsgroep);
+        }
+
+        ##########################################################################################
+        ### GET KAMPWEEK
+        ##########################################################################################        
+
+        if ($key_kampweek >= 0) {
+            $raw_kampweek           = $params[$key_kampweek]['value']                       ?? NULL;
+            $new_kampweek           = $raw_kampweek;
+            $org_kampweek           = $new_kampweek;
+            $belangstelling_week    = $org_kampweek;
+            wachthond($extdebug,2, "org_kampweek", $org_kampweek);
+        }
+
+        ##########################################################################################
+        ### GET KAMPWEKEN
+        ##########################################################################################        
+
+        if ($key_kampweken >= 0) {
+            $raw_kampweken          = $params[$key_kampweken]['value']                      ?? NULL;
+            $belangstelling_kamp    = $raw_kampweken;
+            wachthond($extdebug,2, "org_kampweken", $raw_kampweken);            
+        }
+
+        ##########################################################################################
+        ### GET MEE DATUM UPDATE
+        ##########################################################################################        
+
+        if ($key_mee_update >= 0) {
+            $raw_mee_update             = $params[$key_mee_update]['value']                 ?? NULL;
+            $new_mee_update             = strtotime($raw_mee_update);
+            $org_mee_update             = date("Y-m-d H:i:s", $new_mee_update);  
+            $werving_mee_update         = $org_mee_update;
+            wachthond($extdebug,2, "org_mee_update", $org_mee_update);
+        }
+
+        ##########################################################################################
+        ### GET MEE DATUM KOMEND KAMPJAAR 
+        ##########################################################################################        
+
+        if ($key_mee_update_year >= 0) {
+            $raw_mee_update_year        = $params[$key_mee_update_year]['value']            ?? NULL;
+            $new_mee_update_year        = strtotime($raw_mee_update_year);
+            $org_mee_update_year        = date("Y-m-d H:i:s", $new_mee_update_year);  
+            $werving_mee_update_year    = $org_mee_update_year;
+            wachthond($extdebug,2, "org_mee_update_year", $org_mee_update_year);
+        }
+
+        ##########################################################################################
+        ### GET MEE VERWACHTING
+        ##########################################################################################        
+
+        if ($key_mee_verwachting >= 0) {
+            $raw_mee_verwachting        = $params[$key_mee_verwachting]['value']            ?? NULL;
+            $werving_mee_verwachting    = $raw_mee_verwachting;
+            wachthond($extdebug,2, "org_mee_verwachting", $raw_mee_verwachting);
+        }
+
+        ##########################################################################################
+        ### GET MEE TOELICHTING
+        ##########################################################################################        
+
+        if ($key_mee_toelichting >= 0) {
+            $raw_mee_toelichting        = $params[$key_mee_toelichting]['value']            ?? NULL;
+            $werving_mee_toelichting    = $raw_mee_toelichting;
+            wachthond($extdebug,2, "org_mee_toelichting", $raw_mee_toelichting);            
+        }
+
+        ##########################################################################################
+        ### GET MEE STATUS
+        ##########################################################################################        
+
+        if ($key_mee_status >= 0) {
+            $raw_mee_status         = $params[$key_mee_status]['value']                     ?? NULL;
+            $werving_mee_status     = $raw_mee_status;
+            wachthond($extdebug,2, "org_mee_status", $raw_mee_status);            
+        }                        
+
+        ##########################################################################################
+        ### GET MEE NOTITIES
+        ##########################################################################################        
+
+        if ($key_mee_notities >= 0) {
+            $raw_mee_notities       = $params[$key_mee_notities]['value']                   ?? NULL;
+            $werving_mee_notities   = $raw_mee_notities;
+            wachthond($extdebug,2, "org_mee_notities", $raw_mee_notities);
+        }                        
+
+        ##########################################################################################
+        ### GET VAKANTIEREGIO
+        ##########################################################################################        
+
+        if ($key_vakantieregio >= 0) {
+            $raw_vakantieregio        = $params[$key_vakantieregio]['value']                ?? NULL;
+            $werving_vakantieregio    = $raw_vakantieregio;
+            wachthond($extdebug,2, "org_vakantieregio", $raw_vakantieregio);
+        }
+
+        ##########################################################################################
+        ### GET DISPLAYNAME
+        ##########################################################################################        
+
+        if ($contact_id > 0) {
+
+            $params_contact_get = [
+                'checkPermissions' => FALSE,
+                'debug'  => $apidebug,              
+                'select' => [
+                    'display_name',
+                    'birth_date',
+                    'WERVING.vakantieregio',
+                ],
+                'where' => [
+                    ['id',              'IN', [$contact_id]],
+                ],
+            ];
+        }        
+        wachthond($extdebug,7, 'params_contact_get',            $params_contact_get);
+        $result_contact_get    = civicrm_api4('Contact','get',  $params_contact_get);
+        wachthond($extdebug,9, 'result_contact_get',            $result_contact_get);
+
+        if (isset($result_contact_get))    {
+            $display_name           = $result_contact_get[0]['display_name']            ?? NULL;
+            $birth_date             = $result_contact_get[0]['birth_date']              ?? NULL;
+            $werving_vakantieregio  = $result_contact_get[0]['WERVING.vakantieregio']   ?? NULL;
+
+            wachthond($extdebug,1, 'display_name',              $display_name);
+            wachthond($extdebug,1, 'birth_date',                $birth_date);
+            wachthond($extdebug,2, 'werving_vakantieregio',     
+                $werving_vakantieregio);
+        }
+
+        // M61: ALLEEN DEZE SECTIE INDIEN WAARDE KEY_MEE_STATUS AANWEZOIG IS
+        // M61: IN SOMMIGE GEVALLEN BEVAT PARAMS ALLEEN WAARDEN MBT LEEFTIJD
+
+        if ($org_datum_belangstelling AND $params[$key_mee_status]['value'] AND $belangstelling_week) {
+
+            wachthond($extdebug,2, "########################################################################");
+            wachthond($extdebug,1, "### WERVING [PRE] 1.2 BEPAAL WAARDE KAMPWEKEN BELANGSTELLING");
+            wachthond($extdebug,2, "########################################################################");
+
+            $belangstelling_array = [];
+
+            wachthond($extdebug,2, 'belangstelling_week',       $belangstelling_week);
+            wachthond($extdebug,2, 'belangstelling_groep',      $belangstelling_groep);
+
+            if (($belangstelling_week == 'week1' OR $belangstelling_week == 'maaktnietuit') AND in_array('kinderkamp',  $belangstelling_groep))   {
+                array_push($belangstelling_array, 'KK1');
+            }
+            if (($belangstelling_week == 'week2' OR $belangstelling_week == 'maaktnietuit') AND in_array('kinderkamp',  $belangstelling_groep))   {
+                array_push($belangstelling_array, 'KK2');
+            }
+            if (($belangstelling_week == 'week1' OR $belangstelling_week == 'maaktnietuit') AND in_array('brugkamp',    $belangstelling_groep))   {
+                array_push($belangstelling_array, 'BK1');
+            }
+            if (($belangstelling_week == 'week2' OR $belangstelling_week == 'maaktnietuit') AND in_array('brugkamp',    $belangstelling_groep))   {
+                array_push($belangstelling_array, 'BK2');
+            }
+            if (($belangstelling_week == 'week1' OR $belangstelling_week == 'maaktnietuit') AND in_array('tienerkamp',  $belangstelling_groep))   {
+                array_push($belangstelling_array, 'TK1');
+            }
+            if (($belangstelling_week == 'week2' OR $belangstelling_week == 'maaktnietuit') AND in_array('tienerkamp',  $belangstelling_groep))   {
+                array_push($belangstelling_array, 'TK2');
+            }
+            if (($belangstelling_week == 'week1' OR $belangstelling_week == 'maaktnietuit') AND in_array('jeugdkamp',   $belangstelling_groep))   {
+                array_push($belangstelling_array, 'JK1');
+            }
+            if (($belangstelling_week == 'week2' OR $belangstelling_week == 'maaktnietuit') AND in_array('jeugdkamp',   $belangstelling_groep))   {
+                array_push($belangstelling_array, 'JK2');
+            }
+
+            wachthond($extdebug,2, 'belangstelling_array',          $belangstelling_array);
+            if (!empty($belangstelling_array)) {
+                $belangstelling_string = implode('',          $belangstelling_array);
+                wachthond($extdebug,2, 'belangstelling_string',     $belangstelling_string);
+            }
+
+            wachthond($extdebug,2, 'key_kampweken',                 $key_kampweken);
+            if (is_numeric($key_kampweken) AND !empty($belangstelling_array)) {
+                wachthond($extdebug,3, "ORG params[kampweken]",     $params[$key_kampweken]);
+                $params[$key_kampweken]['value'] =                  $belangstelling_string;
+                wachthond($extdebug,3, "NEW params[kampweken]",     $params[$key_kampweken]);
+            }
+
+        }
+
+        if (date_biggerequal($datum_belangstelling, $werving_mee_update, 'belang', 'meeupdate') == 1 OR empty($werving_mee_update)) {
+
+            wachthond($extdebug,2, "########################################################################");
+            wachthond($extdebug,1, "### WERVING [PRE] 1.3 VUL VELDEN 'MEE DIT JAAR' OBV DATUM BELANGSTELLING");
+            wachthond($extdebug,2, "########################################################################");
+
+            $new_werving_mee_update = $datum_belangstelling;
+            wachthond($extdebug,2, 'trek datum werving mee update gelijk met datum belangstelling',     $datum_belangstelling);
+
+        } else {
+
+            $new_werving_mee_update = $werving_mee_update;
+
+        }
+
+        wachthond($extdebug,2, "########################################################################");
+        wachthond($extdebug,1, "### WERVING [PRE] 1.4 BEPAAL LAST & NEXT EVENT DATES");
+        wachthond($extdebug,2, "########################################################################");
+
+        wachthond($extdebug,4, 'new_werving_mee_update',                    $new_werving_mee_update);
+        $new_werving_mee_update_lastnext = find_lastnext($new_werving_mee_update);
+        wachthond($extdebug,3, 'new_werving_mee_update_lastnext',           $new_werving_mee_update_lastnext);
+
+        $new_werving_mee_update_last_einde_date =   $new_werving_mee_update_lastnext['last_einde_date'];
+        wachthond($extdebug,3, 'new_werving_mee_update_last_einde_date',    $new_werving_mee_update_last_einde_date);
+
+        $new_werving_mee_update_next_start_date =   $new_werving_mee_update_lastnext['next_start_date'];
+        wachthond($extdebug,3, 'new_werving_mee_update_next_start_date',    $new_werving_mee_update_next_start_date);
+
+        ##########################################################################################
+        ### SET DEFAULT VALUE FOR NEW_WERVING_MEE_UPDATE & BEPAAL FISCAL YEAR START & EINDE
+        ##########################################################################################        
+
+        $mee_fiscalyear                 = curriculum_civicrm_fiscalyear($new_werving_mee_update);
+        $mee_fiscalyear_start           = $mee_fiscalyear['fiscalyear_start'] ?? NULL;
+        $mee_fiscalyear_einde           = $mee_fiscalyear['fiscalyear_einde'] ?? NULL;
+
+        $new_werving_mee_update_year    = date('Y', strtotime($new_werving_mee_update));
+        wachthond($extdebug,4, 'new_werving_mee_update_year', $new_werving_mee_update_year);
+
+        wachthond($extdebug,2, "########################################################################");
+        wachthond($extdebug,1, "### WERVING [PRE] 1.4 b BEPAAL LAATSTE KAMPDATUM OBV ZEKERE DATUMS ");
+        wachthond($extdebug,2, "########################################################################");
+
+        ##########################################################################################
+        ### BEPAAL DATUMS ZEKER VOOR KAMP EN ZEKER NA KAMP OM TE BEOORDELEN OM WELK KAMPJAAR HET GAAT
+        ##########################################################################################        
+
+        $datumzekervoorkamp_datetime= new DateTime($new_werving_mee_update_year.'-07-18 16:00:00');
+        wachthond($extdebug,3, 'datumzekervoorkamp_datetime',       $datumzekervoorkamp_datetime);
+        $datumzekervoorkamp_string  = $datumzekervoorkamp_datetime->format('Y-m-d H:i:s');
+        wachthond($extdebug,3, 'datumzekervoorkamp_string',         $datumzekervoorkamp_string);
+
+        $datumzekernakamp_datetime  = new DateTime($new_werving_mee_update_year.'-08-07 16:00:00');
+        wachthond($extdebug,3, 'datumzekernakamp_datetime',         $datumzekernakamp_datetime);
+        $datumzekernakamp_string    = $datumzekernakamp_datetime->format('Y-m-d H:i:s');
+        wachthond($extdebug,3, 'datumzekernakamp_string',           $datumzekernakamp_string);
+
+        if (date_biggerequal($new_werving_mee_update, $datumzekernakamp_string, 'new_werving_mee_update', 'datumzekernakamp') == 1) {
+            $new_werving_mee_update_nextyear  = date('Y', strtotime('+1 year', strtotime($werving_mee_update)) );        
+            wachthond($extdebug,2, "OP BASIS VAN DATA ZEKER NA KAMP $datumzekernakamp_string", "nextyear +1: $werving_mee_update_nextyear" );
+        }
+        if (date_biggerequal($datumzekervoorkamp_string, $new_werving_mee_update, 'datumzekervoorkamp', 'new_werving_mee_update') == 1) {
+            $new_werving_mee_update_nextyear  = date('Y', strtotime('+0 year', strtotime($new_werving_mee_update)) );
+            wachthond($extdebug,2, "OP BASIS VAN DATA ZEKER VOOR KAMP $datumzekernakamp_string", "nextyear +0: $new_werving_mee_update_nextyear" );
+        }
+        if (empty($new_werving_mee_update_nextyear)) {
+            wachthond($extdebug,2, "OBV LAATSTE KAMPREGISTRATIE GEEN RESULTAAT GEVONDEN" );
+        }
+
+        wachthond($extdebug,3, 'new_werving_mee_update_nextyear',       $new_werving_mee_update_nextyear);
+
+        wachthond($extdebug,2, "########################################################################");
+        wachthond($extdebug,1, "### WERVING [PRE] 1.4 c BEPAAL LAATSTE KAMPDATUM OBV LAATSTE REGISTRATIE");
+        wachthond($extdebug,2, "########################################################################");
+
+        ##########################################################################################
+        ### M61 TODO: DATUM NEXT IS NU DE VOLGENDE REGISTRATIE. INDIEN DIE ER NIET IS DAN ZOEK OP EVENT
+        ##########################################################################################        
+
+        if (empty($new_werving_mee_update_nextyear)) {  // ALLEEN MET EXTRA QUERIES INDIEN OBV DATUM ZEKER NA NIET LUKT
+
+            $participant_lastnext = find_lastnext_part($contact_id, $new_werving_mee_update);
+
+            wachthond($extdebug,2, 'participant_lastnext',          $participant_lastnext);
+
+            $participant_last_einde_date =   $participant_lastnext['last_einde_date'];
+            wachthond($extdebug,3, 'participant_last_einde_date',   $participant_last_einde_date);
+
+            if (date_biggerequal($new_werving_mee_update, $participant_last_einde_date, 'new_werving_mee_update', 'participant_last_einde_date') == 1) {
+                $new_werving_mee_update_nextyear  = date('Y', strtotime('+1 year', strtotime($new_werving_mee_update)) );        
+                wachthond($extdebug,2, "OBV LAATSTE KAMPREGISTRATIE $participant_last_einde_date", "nextyear +1: $new_werving_mee_update_nextyear" );
+            }
+            if (date_biggerequal($participant_last_einde_date, $new_werving_mee_update, 'participant_last_einde_date', 'new_werving_mee_update') == 1) {
+                $new_werving_mee_update_nextyear  = date('Y', strtotime('+0 year', strtotime($new_werving_mee_update)) );
+                wachthond($extdebug,2, "OBV LAATSTE KAMPREGISTRATIE $participant_next_einde_date", "nextyear +0: $new_werving_mee_update_nextyear" );
+            }
+
+        } else {
+                wachthond($extdebug,2, "NIET NODIG - WAARDEN AL GEVONDEN VIA DATUM ZEKER NA KAMP", $new_werving_mee_update_nextyear);
+        }
+
+        wachthond($extdebug,3, 'new_werving_mee_update_nextyear',       $new_werving_mee_update_nextyear);
+
+        wachthond($extdebug,2, "########################################################################");
+        wachthond($extdebug,1, "### WERVING [PRE] 1.5 a UPDATE PARAMS MET MEE UPDATE DATUM IGV BELANGSTELLING");
+        wachthond($extdebug,2, "########################################################################");
+
+        if (is_numeric($key_mee_update) AND !empty($new_werving_mee_update)) {
+
+            // M61 converteer de datum naar een manier die weg te schrijven is in params
+            $new_werving_mee_update_datetime  = new DateTime($new_werving_mee_update);
+            wachthond($extdebug,3, 'new_werving_mee_update_datetime',   $new_werving_mee_update_datetime);
+            $new_werving_mee_update_string    = $new_werving_mee_update_datetime->format('Y-m-d H:i:s');
+            wachthond($extdebug,3, 'new_werving_mee_update_string',     $new_werving_mee_update_string);
+            $new_werving_mee_update_dbstring  = date("YmdHis", strtotime($new_werving_mee_update_string));
+            wachthond($extdebug,2, 'new_werving_mee_update_dbstring',   $new_werving_mee_update_dbstring);
+
+            ##########################################################################################
+            ### M61 : ALS CORRECTIE VOOR ALLE FOUTIEVE WAARDEN 1970
+            ##########################################################################################        
+
+            wachthond($extdebug,2, 'today_datetime_past',   $today_datetime_past);
+            wachthond($extdebug,2, 'org_mee_update',        $org_mee_update);
+
+            if (date_biggerequal($today_datetime_past, $org_mee_update, 'today_datetime_past', 'org_mee_update') == 1) {
+                $new_werving_mee_update_dbstring  = NULL;
+            }
+
+            wachthond($extdebug,3, 'OLD params[key_mee_update]',        $params[$key_mee_update]);
+            $params[$key_mee_update]['value'] =                         $new_werving_mee_update_dbstring;
+            wachthond($extdebug,3, 'NEW params[key_mee_update]',        $params[$key_mee_update]);
+        }
+
+        wachthond($extdebug,2, "########################################################################");
+        wachthond($extdebug,1, "### WERVING [PRE] 1.5 b UPDATE PARAMS MET JAAR NEXT KAMP TOV MEE_UPDATE");
+        wachthond($extdebug,2, "########################################################################");
+
+        // M61 converteer de datum naar een manier die weg te schrijven is in params
+        $new_datum_komendkamp_datetime  = new DateTime($new_werving_mee_update_nextyear.'-08-01 16:00:00');
+        wachthond($extdebug,3, 'new_datum_komendkamp_datetime',     $new_datum_komendkamp_datetime);
+        $new_datum_komendkamp_string    = $new_datum_komendkamp_datetime->format('Y-m-d H:i:s');
+        wachthond($extdebug,3, 'new_datum_komendkamp_string',       $new_datum_komendkamp_string);
+        $new_datum_komendkamp_dbstring  = date("YmdHis", strtotime($new_datum_komendkamp_string));
+        wachthond($extdebug,2, 'new_datum_komendkamp_dbstring',     $new_datum_komendkamp_dbstring);
+
+        if (is_numeric($key_mee_update_year) AND !empty($new_datum_komendkamp_dbstring)) {
+
+            ##########################################################################################
+            ### M61 : ALS CORRECTIE VOOR ALLE FOUTIEVE WAARDEN 1970
+            ##########################################################################################        
+
+            wachthond($extdebug,2, 'today_datetime_past',   $today_datetime_past);
+            wachthond($extdebug,2, 'org_mee_update_year',   $org_mee_update_year);
+
+            if (date_biggerequal($today_datetime_past, $org_mee_update_year, 'today_datetime_past', 'org_mee_update_year') == 1) {
+                $new_datum_komendkamp_dbstring  = NULL;
+            }
+
+            wachthond($extdebug,3, 'OLD params[key_mee_update_year]',   $params[$key_mee_update_year]);
+            $params[$key_mee_update_year]['value'] =                    $new_datum_komendkamp_dbstring;
+            wachthond($extdebug,3, 'NEW params[key_mee_update_year]',   $params[$key_mee_update_year]);
+        }
+
+        // INDIEN BELANGSTELLING NA START AFGELOPEN KAMP DAN MEE VERWACHTING KOMEND JAAR MISSCHIEN
+        if (date_biggerequal($datum_belangstelling, $last_event_einde_date, 'belang', 'lastyear') == 1 AND $laatstekeer != $last_event_einde_year) {
+
+            if (in_array($werving_mee_verwachting, array('zekerniet','waarschijnlijkniet','weetnogniet')) OR empty($werving_mee_verwachting)) {
+
+                wachthond($extdebug,2, 'werving_mee_verwachting',       $werving_mee_verwachting);
+                $new_werving_mee_verwachting                = "misschien";
+                wachthond($extdebug,2,'werving_mee_verwachting',        $new_werving_mee_verwachting);
+
+                wachthond($extdebug,3, 'OLD params[key_mee_verwachting][value]', $params[$key_mee_verwachting]);
+                if (is_numeric($key_mee_verwachting)) {
+                    $params[$key_mee_verwachting]['value']  =           $new_werving_mee_verwachting;
+                }
+                wachthond($extdebug,3, 'NEW params[key_mee_verwachting][value]', $params[$key_mee_verwachting]);
+
+                wachthond($extdebug,2,"ZET VERWACHTING OP 'MISSCHIEN' ($new_werving_mee_verwachting) IVM BELANGSTELLING DIT JAAR",$datum_belangstelling);
+            }
+        }        
+
+        wachthond($extdebug,2, "########################################################################");
+        wachthond($extdebug,1, "### WERVING [PRE] 2.2 VUL 'MEE STATUS' OBV INGEVULDE VERWACHTING");
+        wachthond($extdebug,2, "########################################################################");
+
+// M61: waarde mee status kan beste handmatig blijven omdat iemand nee ingevuld kan hebben maar mondeling het toch ja wordt (of andersom)
+//      if ($new_werving_mee_verwachting == 'zekerniet') {
+//          $new_werving_mee_status             = 'nietmee';
+//      }
+
+        ##########################################################################################
+        ### M61 : ALS CORRECTIE VOOR ALLE FOUTIEVE WAARDEN ONBEKEND BIJ LEGE DATUM BELANGSTELLING
+        ##########################################################################################        
+
+        wachthond($extdebug,3, 'datum_belangstelling', $datum_belangstelling);
+
+        if (date_biggerequal($today_datetime_past, $datum_belangstelling, 'today_datetime_past', 'datum_belangstelling') == 1) {
+            $new_werving_mee_status     = ""; 
+            wachthond($extdebug,3, 'datum belangstelling is leeg, maak daarom status mee ook leeg');
+
+            if (is_numeric($key_mee_status)) {
+                wachthond($extdebug,3, 'OLD params[key_mee_status][value]', $params[$key_mee_status]);
+                $params[$key_mee_status]['value']   = $new_werving_mee_status;
+                wachthond($extdebug,3, 'NEW params[key_mee_status][value]', $params[$key_mee_status]);
+            }
+        }
+
+        ##########################################################################################
+
+        if (empty($datum_belangstelling)) {
+            $new_werving_mee_status     = ""; 
+        }
+        if (empty($raw_mee_status) AND !empty($datum_belangstelling)) {
+            $new_werving_mee_status     = 'onbekend'; 
+        }
+
+        wachthond($extdebug,2, 'key_mee_status', $key_mee_status);
+
+        if (empty($raw_mee_status)) {   // M61: Vul alleen in indien leeg
+            if (is_numeric($key_mee_status)) {
+                wachthond($extdebug,3, 'OLD params[key_mee_status][value]', $params[$key_mee_status]);
+                $params[$key_mee_status]['value']   = $new_werving_mee_status;
+                wachthond($extdebug,3, 'NEW params[key_mee_status][value]', $params[$key_mee_status]);
+            }
+        } else {
+            // M61: Houdt de status hetzelfde
+            wachthond($extdebug,3, 'OLD params[key_mee_status][value]', $params[$key_mee_status]);
+            wachthond($extdebug,3, 'NEW params[key_mee_status][value]', $params[$key_mee_status]);
+        }
+
+        wachthond($extdebug,1, "########################################################################");
+        wachthond($extdebug,1, "### WERVING 3.1 MEE ACTIVITY - GET (cid: $contact_id)", "[groupID: $groupID] [op: $op]");
+        wachthond($extdebug,1, "########################################################################");
+
+        wachthond($extdebug,4, 'new_werving_mee_update',        $new_werving_mee_update);
+        wachthond($extdebug,4, 'today_datetime_past',           $today_datetime_past);
+
+        if (date_bigger($new_werving_mee_update, $today_datetime_past) == 1) {
+
+            $params_activity_mee_get = [
+                'checkPermissions' => FALSE,
+                'debug' => $apidebug,
+                'select' => [
+                    'row_count', 'id', 'activity_date_time', 'status_id', 'status_id:name', 'subject', 'activity_contact.contact_id',
+                ],
+                'join' => [
+                    ['ActivityContact AS activity_contact', 'INNER'],
+                ],
+                'where' => [
+                    ['activity_contact.contact_id',       '=', $contact_id],
+                    ['activity_contact.record_type_id',   '=', 3],
+                    ['activity_type_id:name',             '=', 'werving_mee_ditjaar'],
+                    ['activity_date_time',                '>=', $mee_fiscalyear_start],
+                    ['activity_date_time',                '<=', $mee_fiscalyear_einde],
+                ],
+                'limit' => 1,
+            ];
+
+//          wachthond($extdebug,7, 'params_activity_mee_get',       $params_activity_mee_get);
+            $result_mee_get       = civicrm_api4('Activity','get',  $params_activity_mee_get);
+            $result_mee_get_count = $result_mee_get->countMatched();
+//          wachthond($extdebug,9, 'result_activity_mee_get ',      $result_mee_get);   
+            wachthond($extdebug,3, 'result_mee_count',              $result_mee_get_count);
+        }
+
+        if ($new_werving_mee_update AND $result_mee_get_count AND $result_mee_get_count == 1) {
+
+            $mee_activity_id            = $result_mee_get[0]['id']                  ?? NULL;
+            $mee_activity_status_id     = $result_mee_get[0]['status_id']           ?? NULL;
+            $mee_activity_status_name   = $result_mee_get[0]['status_id:name']      ?? NULL;
+            $mee_activity_datum         = $result_mee_get[0]['activity_date_time']  ?? NULL;
+
+            wachthond($extdebug,2, 'mee_activity_id',           $mee_activity_id);
+            wachthond($extdebug,2, 'mee_activity_status_id',    $mee_activity_status_id);
+            wachthond($extdebug,2, 'mee_activity_status_name',  $mee_activity_status_name);
+            wachthond($extdebug,2, 'mee_activity_datum',        $mee_activity_datum);
+
+          } else {
+
+            $mee_activity_id        = NULL;
+            $mee_activity_status    = NULL;
+            $mee_activity_datum     = NULL;
+            wachthond($extdebug,3, 'mee_activity_id',   "No Activity Found");
+        }
+
+        if (date_bigger($new_werving_mee_update, $today_datetime_past) == 1 AND $result_mee_get_count == 0 AND $werving_mee_update_nextyear > 2000) {
+
+            wachthond($extdebug,2, "########################################################################");
+            wachthond($extdebug,1, "### WERVING 3.2 MEE ACTIVITY - CREATE (cid: $contact_id)", "[groupID: $groupID] [op: $op]");
+            wachthond($extdebug,2, "########################################################################");
+
+            wachthond($extdebug,1, "########################################################################");
+            wachthond($extdebug,1, "CREATE werving_mee_verwachting",  "$werving_mee_verwachting");
+            wachthond($extdebug,1, "CREATE werving_mee_toelichting",  "$werving_mee_toelichting");
+            wachthond($extdebug,1, "########################################################################");
+
+            $params_activity_mee_create = [
+                'checkPermissions' => FALSE,
+                'debug' => $apidebug,
+                'values' => [
+                    'source_contact_id'         => $contact_id,
+                    'target_contact_id'         => $contact_id,
+                    'activity_type_id:name'     => 'werving_mee_ditjaar',
+                    'activity_date_time'        => $new_werving_mee_update,     
+                    'subject'                   => 'Mee in '. $werving_mee_update_nextyear.' : '.$werving_mee_verwachting,
+                    'status_id:name'            => 'Completed',
+                    'ACT_MEE.kampjaar'          => $werving_mee_update_nextyear,
+//                  'ACT_MEE.komendkamp'        => $next_event_start_date,
+                    'ACT_MEE.rol'               => $werving_mee_rol,
+                    'ACT_MEE.verwachting'       => $werving_mee_verwachting, 
+                    'ACT_MEE.toelichting'       => $werving_mee_toelichting, 
+                    'ACT_MEE.update'            => $new_werving_mee_update,
+
+                    'ACT_ALG.actcontact_naam'   => $displayname,
+                    'ACT_ALG.actcontact_cid'    => $contact_id,
+
+                    'ACT_ALG.kampnaam'          => $ditevent_event_kampkort_cap,
+                    'ACT_ALG.kampkort'          => $ditevent_event_kampkort_low,
+                    'ACT_ALG.kampfunctie'       => $ditevent_part_functie,
+                    'ACT_ALG.kamprol'           => $ditevent_part_rol,        
+                    'ACT_ALG.kampstart'         => $eventkamp_event_start,
+                    'ACT_ALG.kampeinde'         => $eventkamp_event_einde,
+                    'ACT_ALG.kampjaar'          => $ditevent_kampjaar,
+                    'ACT_ALG.modified'          => $today_datetime,
+                    'ACT_ALG.prioriteit:label'  => 'Normaal',
+                ],
+            ];
+            wachthond($extdebug,7, 'params_activity_mee_create',                $params_activity_mee_create);
+            if ($extwrite == 1 AND $contact_id) {
+                $result_activity_mee_create = civicrm_api4('Activity','create', $params_activity_mee_create);
+//              wachthond($extdebug,9, 'result_activity_mee_create',            $result_activity_mee_create);
+            }
+        }        
+
+        if (date_bigger($new_werving_mee_update, $today_datetime_past) == 1 AND $result_mee_get_count == 1) {
+
+            wachthond($extdebug,2, "########################################################################");
+            wachthond($extdebug,1, "### WERVING 3.3 MEE ACTIVITY - UPDATE (cid: $contact_id)", "[groupID: $groupID] [op: $op]");
+            wachthond($extdebug,2, "########################################################################");
+
+            wachthond($extdebug,2, 'mee_activity_id',           $mee_activity_id);
+            wachthond($extdebug,2, 'mee_activity_status_id',    $mee_activity_status_id);
+            wachthond($extdebug,2, 'mee_activity_status_name',  $mee_activity_status_name);
+            wachthond($extdebug,2, 'mee_activity_datum',        $mee_activity_datum);
+
+            wachthond($extdebug,1, "mee_verwachting",           $werving_mee_verwachting);
+            wachthond($extdebug,1, "mee_toelichting",           $werving_mee_toelichting);
+            wachthond($extdebug,3, "########################################################################");
+
+            $params_activity_mee_update = [
+                'checkPermissions' => FALSE,
+                'debug' => $apidebug,
+                'where' => [
+                    ['id',             '=', $mee_activity_id],
+                ],        
+                'values' => [
+                    'source_contact_id'       => $contact_id,
+                    'target_contact_id'       => $contact_id,
+                    'activity_type_id:name'   => 'werving_mee_ditjaar',
+                    'activity_date_time'      => $new_werving_mee_update,
+                    'subject'                 => 'Mee in '. $werving_mee_update_nextyear.' : '.$werving_mee_verwachting,
+                    'status_id:name'          => 'Completed',
+                    'ACT_MEE.kampjaar'        => $werving_mee_update_nextyear,
+                    'ACT_MEE.komendkamp'      => $new_datum_komendkamp_string,
+                    'ACT_MEE.rol'             => $werving_mee_rol,
+                    'ACT_MEE.verwachting'     => $werving_mee_verwachting,
+                    'ACT_MEE.toelichting'     => $werving_mee_toelichting,
+                    'ACT_MEE.update'          => $new_werving_mee_update,
+
+                    'ACT_ALG.actcontact_naam' => $displayname,
+                    'ACT_ALG.actcontact_cid'  => $contact_id,
+
+                    'ACT_ALG.kampnaam'        => $ditevent_event_kampkort_cap,
+                    'ACT_ALG.kampkort'        => $ditevent_event_kampkort_low,
+                    'ACT_ALG.kampfunctie'     => $ditevent_part_functie,
+                    'ACT_ALG.kamprol'         => $ditevent_part_rol,
+                    'ACT_ALG.kampstart'       => $eventkamp_event_start,
+                    'ACT_ALG.kampeinde'       => $eventkamp_event_einde,
+                    'ACT_ALG.kampjaar'        => $ditevent_kampjaar,
+                    'ACT_ALG.modified'        => $today_datetime,
+                    'ACT_ALG.activity_id'     => $mee_activity_id,
+                    'ACT_ALG.prioriteit:label'=> 'Normaal',
+                ],
+            ];
+//          wachthond($extdebug,7, 'params_activity_mee_update',                $params_activity_mee_update);
+            if ($extwrite == 1) {
+                $result_activity_mee_update = civicrm_api4('Activity','update', $params_activity_mee_update);
+            }
+//          wachthond($extdebug,9, 'result_activity_mee_update',                $result_activity_mee_update);
+
+            wachthond($extdebug,3, 'ditevent_event_start',  $ditevent_event_start);
+            wachthond($extdebug,3, 'ditevent_event_einde',  $ditevent_event_einde);
+
+            wachthond($extdebug,3, 'mee_update_next_year',  $mee_update_next_year);
+            wachthond($extdebug,3, 'mee_event_past_date',   $mee_event_past_date);
+            wachthond($extdebug,3, 'mee_event_next_date',   $mee_event_next_date);
+            wachthond($extdebug,3, 'mee_event_next_year',   $mee_event_next_year);
+        }
+
+        wachthond($extdebug,2, "########################################################################");
+        wachthond($extdebug,1, "### WERVING 3.4 CONFIGURE VAKANTIEREGIO SCHOOLVAKANTIE", "[$display_name]");
+        wachthond($extdebug,2, "########################################################################");
+
+        $new_vakantieregio = werving_civicrm_vakantieregio($contact_id);
+
+        if (empty($werving_vakantieregio) AND !empty($new_vakantieregio)) {
+            $vakantieregio = werving_civicrm_vakantieregio($contact_id);
+            wachthond($extdebug,1, "new_vakantieregio",     $new_vakantieregio);
+
+            if (is_numeric($key_vakantieregio)) {
+                wachthond($extdebug,3, 'OLD params[key_vakantieregio][value]', $params[$key_vakantieregio]);
+                $params[$key_vakantieregio]['value']   = $vakantieregio;
+                wachthond($extdebug,3, 'NEW params[key_vakantieregio][value]', $params[$key_vakantieregio]);
+            } else {
+
+                wachthond($extdebug,3, 'WRITE vakantieregio via api4 to database', $vakantieregio);
+                $vakantieregio_write = werving_civicrm_vakantieregio_write($contact_id, $vakantieregio);
+
+            }
+        }
+
+        wachthond($extdebug,2, "########################################################################");
+        wachthond($extdebug,1, "### WERVING 3.5 CONFIGURE LEEFTIJD TODAY & NEXT KAMP", "[$display_name]");
+        wachthond($extdebug,2, "########################################################################");
+
+        $leeftijd_vantoday = leeftijd_civicrm_diff('vandaag',  $birth_date, $today_datetime);
+        wachthond($extdebug,3, 'leeftijd_vantoday',             $leeftijd_vantoday);
+        $leeftijd_vantoday_decimalen    = $leeftijd_vantoday['leeftijd_decimalen'] ?? NULL;
+        $leeftijd_vantoday_rondjaren    = $leeftijd_vantoday['leeftijd_rondjaren'] ?? NULL;
+        wachthond($extdebug,2, 'leeftijd_vantoday_decimalen',   $leeftijd_vantoday_decimalen);
+        wachthond($extdebug,2, 'leeftijd_vantoday_rondjaren',   $leeftijd_vantoday_rondjaren);
+
+        wachthond($extdebug,2, 'key_leeftijd_decimalen',        $key_leeftijd_decimalen);
+        wachthond($extdebug,2, 'key_leeftijd_rondjaren',        $key_leeftijd_rondjaren);
+
+        if (is_numeric($key_leeftijd_decimalen)) {
+            wachthond($extdebug,3, 'OLD params[key_leeftijd_decimalen][value]', $params[$key_leeftijd_decimalen]);
+            $params[$key_leeftijd_decimalen]['value']   = $leeftijd_vantoday_decimalen;
+            wachthond($extdebug,3, 'NEW params[key_leeftijd_decimalen][value]', $params[$key_leeftijd_decimalen]);
+        }
+        if (is_numeric($key_leeftijd_rondjaren)) {
+            wachthond($extdebug,3, 'OLD params[key_leeftijd_rondjaren][value]', $params[$key_leeftijd_rondjaren]);
+            $params[$key_leeftijd_rondjaren]['value']   = $leeftijd_vantoday_rondjaren;
+            wachthond($extdebug,3, 'NEW params[key_leeftijd_rondjaren][value]', $params[$key_leeftijd_rondjaren]);
+        }
+
+        $lastnext_kamp_fromtoday        = find_lastnext($today_datetime);
+        $nextkamp_start_date            = $lastnext_kamp_fromtoday['next_start_date'];
+
+        $leeftijd_nextkamp = leeftijd_civicrm_diff('nextkamp',  $birth_date, $nextkamp_start_date);
+        wachthond($extdebug,3, 'leeftijd_nextkamp',             $leeftijd_nextkamp);
+        $leeftijd_nextkamp_decimalen    = $leeftijd_nextkamp['leeftijd_decimalen'] ?? NULL;
+        $leeftijd_nextkamp_rondjaren    = $leeftijd_nextkamp['leeftijd_rondjaren'] ?? NULL;
+        $leeftijd_nextkamp_rondmaand    = $leeftijd_nextkamp['leeftijd_rondmaand'] ?? NULL;            
+        wachthond($extdebug,2, 'leeftijd_nextkamp_decimalen',   $leeftijd_nextkamp_decimalen);
+        wachthond($extdebug,2, 'leeftijd_nextkamp_rondjaren',   $leeftijd_nextkamp_rondjaren);
+        wachthond($extdebug,2, 'leeftijd_nextkamp_rondmaand',   $leeftijd_nextkamp_rondmaand);
+
+        wachthond($extdebug,2, 'key_nextkamp_decimalen',        $key_nextkamp_decimalen);
+        wachthond($extdebug,2, 'key_nextkamp_rondjaren',        $key_nextkamp_rondjaren);
+        wachthond($extdebug,2, 'key_nextkamp_rondmaand',        $key_nextkamp_rondmaand);
+
+        if (is_numeric($key_nextkamp_decimalen)) {
+            wachthond($extdebug,3, 'OLD params[key_nextkamp_decimalen][value]', $params[$key_nextkamp_decimalen]);
+            $params[$key_nextkamp_decimalen]['value']   = $leeftijd_nextkamp_decimalen;
+            wachthond($extdebug,3, 'NEW params[key_nextkamp_decimalen][value]', $params[$key_nextkamp_decimalen]);
+        }
+        if (is_numeric($key_nextkamp_rondjaren)) {
+            wachthond($extdebug,3, 'OLD params[key_nextkamp_rondjaren][value]', $params[$key_nextkamp_rondjaren]);
+            $params[$key_nextkamp_rondjaren]['value']   = $leeftijd_nextkamp_rondjaren;
+            wachthond($extdebug,3, 'NEW params[key_nextkamp_rondjaren][value]', $params[$key_nextkamp_rondjaren]);
+        }
+        if (is_numeric($key_nextkamp_rondmaand)) {
+            wachthond($extdebug,3, 'OLD params[key_nextkamp_rondmaand][value]', $params[$key_nextkamp_rondmaand]);
+            $params[$key_nextkamp_rondmaand]['value']   = $leeftijd_nextkamp_rondmaand;
+            wachthond($extdebug,3, 'NEW params[key_nextkamp_rondmaand][value]', $params[$key_nextkamp_rondmaand]);
+        }
+
+        wachthond($extdebug,3, "params (NEW)",  $params);
+
+        wachthond($extdebug,1, "########################################################################");
+        wachthond($extdebug,1, "### WERVING [PRE] EINDE BELANGSTELLING / MEE", "[groupID: $groupID / op: $op]");
+        wachthond($extdebug,1, "########################################################################");
+    }
+}
+
+function werving_civicrm_vakantieregio($contactid) {
+
+    $extdebug   = 1;  //  1 = basic // 2 = verbose // 3 = params / 4 = results
+    $apidebug   = FALSE;
+
+    if (empty($contactid)) {
+        return;
+    } else {
+        $contact_id     = $contactid;
+    }
+
+    $extwrite           = 1;
+    $extwerving         = 1;
+
+    $profilewerving     = array(270);
+
+    wachthond($extdebug,1, "########################################################################");
+    wachthond($extdebug,1, "### REGIO 1.1 GET ADRESGEGEVENS & LOOKUP VAKANTIEREGIO", "[CID: $contact_id]");
+    wachthond($extdebug,1, "########################################################################");
+
+    if ($contact_id > 0) {
+
+        $params_adres_get = [
+            'checkPermissions' => FALSE,
+            'debug'  => $apidebug,              
+            'select' => [
+                'id',
+                'display_name',
+                'birth_date',
+                'address_primary.id',
+                'address_primary.street_address',
+                'address_primary.street_number',
+                'address_primary.street_number_suffix',
+                'address_primary.postal_code',
+                'address_primary.city',
+                'address_primary.Adresgegevens.Gemeente',
+                'address_primary.Adresgegevens.Provincie',
+                'WERVING.vakantieregio',
+            ],
+            'where' => [
+                ['id',              'IN', [$contact_id]],
+            ],
+        ];
+        
+        wachthond($extdebug,7, 'params_adres_get',          $params_adres_get);
+        $result_adres_get    = civicrm_api4('Contact','get',$params_adres_get);
+        wachthond($extdebug,9, 'result_adres_get',          $result_adres_get);
+
+        if (isset($result_adres_get))    {
+            $display_name               = $result_adres_get[0]['display_name']                                  ?? NULL;
+            $adres_id                   = $result_adres_get[0]['address_primary.id']                            ?? NULL;
+            $adres_street_address       = trim($result_adres_get[0]['address_primary.street_address'])          ?? NULL;
+            $adres_street_number        = trim($result_adres_get[0]['address_primary.street_number'])           ?? NULL;
+            $adres_street_suffix        = trim($result_adres_get[0]['address_primary.street_number_suffix'])    ?? NULL;
+            $adres_postcode             = trim($result_adres_get[0]['address_primary.postal_code'])             ?? NULL;
+            $adres_plaats               = trim($result_adres_get[0]['address_primary.city'])                    ?? NULL;
+            $adres_gemeente             = trim($result_adres_get[0]['address_primary.Adresgegevens.Gemeente'])  ?? NULL;
+            $adres_provincie            = trim($result_adres_get[0]['address_primary.Adresgegevens.Provincie']) ?? NULL;
+            $werving_vakantieregio      = trim($result_adres_get[0]['WERVING.vakantieregio'])                   ?? NULL;
+
+            $adres_postcode             = str_replace(' ', '',  $adres_postcode);
+
+            wachthond($extdebug,1, 'display_name',              $display_name);
+            wachthond($extdebug,2, 'adres_id',                  $adres_id);
+            wachthond($extdebug,1, 'adres_street_address',      $adres_street_address);
+            wachthond($extdebug,2, 'adres_street_number',       $adres_street_number);
+            wachthond($extdebug,2, 'adres_street_suffix',       $adres_street_suffix);
+            wachthond($extdebug,1, 'adres_postcode',            $adres_postcode);
+            wachthond($extdebug,1, 'adres_plaats',              $adres_plaats);
+            wachthond($extdebug,1, 'adres_gemeente',            $adres_gemeente);
+            wachthond($extdebug,2, 'adres_provincie',           $adres_provincie);
+            wachthond($extdebug,2, 'werving_vakantieregio',     $werving_vakantieregio);
+        }
+
+        if (empty($adres_streetnumber) AND !empty($adres_streetaddress)) {
+
+            wachthond($extdebug,2, "########################################################################");
+            wachthond($extdebug,2, "### REGIO 1.2 SPLIT STRAAT, HUISNUMMER EN SUFFIX EN SCHRIJF NAAR DB");
+            wachthond($extdebug,2, "########################################################################");
+
+            $splitstreetaddress = splitstreetaddress($adres_streetaddress);
+            wachthond($extdebug,2, 'splitstreetaddress', $splitstreetaddress);
+
+            $adres_street_name      = $splitstreetaddress['street_name'];
+            $adres_street_number    = $splitstreetaddress['street_number'];
+            $adres_street_suffix    = $splitstreetaddress['street_suffix'];
+
+            wachthond($extdebug,1, 'adres_street_name',     $adres_street_name);
+            wachthond($extdebug,1, 'adres_street_number',   $adres_street_number);
+            wachthond($extdebug,1, 'adres_street_suffix',   $adres_street_suffix); 
+
+            $params_update_adres = [
+                'checkPermissions' => FALSE,
+                'debug' => $apidebug,
+                'where' => [
+                    ['id',          '=', $adres_id],
+//                  ['contact_id',  '=', $contact_id],
+                ],
+                'values' => [
+                    'street_name'           => $adres_street_name,
+                    'street_number'         => $adres_street_number,
+                    'street_number_suffix'  => $adres_street_suffix,
+                ],
+            ];
+
+            wachthond($extdebug,3, 'params_update_adres',               $params_update_adres);
+            if ($adres_street_name AND $adres_street_number) {
+                $result_update_adres = civicrm_api4('Address','update', $params_update_adres);
+            }
+            wachthond($extdebug,9, 'result_update_adres',               $result_update_adres);
+
+        }
+
+        wachthond($extdebug,2, "########################################################################");
+        wachthond($extdebug,2, "### REGIO 1.3 ZOEK GEGEVENS OP VIA PRO6PP API MET POSTCODE / HUISNUMMER");
+        wachthond($extdebug,2, "########################################################################");
+
+        wachthond($extdebug,1, 'contact_id',                $contact_id);
+        wachthond($extdebug,1, 'adres_postcode',            $adres_postcode);
+        wachthond($extdebug,2, 'adres_street_number',       $adres_street_number);
+        wachthond($extdebug,2, 'adres_street_suffix',       $adres_street_suffix);
+
+        if ($adres_postcode AND $adres_street_number) {
+
+            wachthond($extdebug,4, 'LOOKUP ADDRESS IN PRO6PP DATABASE BY POSTCODE / NUMBER');
+            $adres_array = werving_civicrm_pro6pp_postcode($contact_id, $adres_postcode, $adres_street_number, $adres_street_suffix);
+
+            $adres_postcode         = $adres_array['adres_postcode'];
+            $adres_street_name      = $adres_array['adres_street_name'];
+            $adres_street_number    = $adres_array['adres_street_number'];
+            $adres_street_suffix    = $adres_array['adres_street_suffix'];
+            $adres_plaats           = $adres_array['adres_plaats'];
+            $adres_gemeente         = $adres_array['adres_gemeente'];
+            $adres_provincie        = $adres_array['adres_provincie'];
+
+            $adres_lat              = $adres_array['adres_lat'];
+            $adres_lng              = $adres_array['adres_lng'];
+
+            $adres_construction     = $adres_array['adres_construction'];
+            $adres_surfacearea      = $adres_array['adres_surfacearea'];
+
+            wachthond($extdebug,3, 'adres_postcode',        $adres_postcode);
+            wachthond($extdebug,3, 'adres_street_name',     $adres_street_name);
+            wachthond($extdebug,3, 'adres_street_number',   $adres_street_number);
+            wachthond($extdebug,3, 'adres_plaats',          $adres_plaats);
+            wachthond($extdebug,3, 'adres_gemeente',        $adres_gemeente);
+            wachthond($extdebug,3, 'adres_provincie',       $adres_provincie);
+
+            wachthond($extdebug,3, 'adres_lat',             $adres_lat);
+            wachthond($extdebug,3, 'adres_lng',             $adres_lng);
+
+            wachthond($extdebug,3, 'adres_construction',    $adres_construction);
+            wachthond($extdebug,3, 'adres_surfacearea',     $adres_surfacearea);
+
+        }
+
+        ##########################################################################################
+        ### RETURN ALS ER GEEN ADRESGEGEVENS ZIJN GEVONDEN
+        ##########################################################################################        
+
+        if (empty($adres_postcode) AND empty($adres_plaats) AND empty($adres_streetaddress)) {
+            return;
+        }
+
+        if (empty($adres_gemeente) AND !empty($adres_plaats)) {
+
+            wachthond($extdebug,2, "########################################################################");
+            wachthond($extdebug,2, "### REGIO 1.3 ZOEK GEMEENTE OP VIA PRO6PP API INDIEN DEZE ONTBREEKT");
+            wachthond($extdebug,2, "########################################################################");
+
+            $pro6pp_key =  "6P84FpVsdq5pRunD";
+            $pro6pp_url =  "https://api.pro6pp.nl/v2/suggest/nl/settlement?settlement=$adres_plaats&authKey=$pro6pp_key";
+
+            wachthond($extdebug,4, 'pro6pp_url', $pro6pp_url);
+
+            $curl = curl_init();
+            curl_setopt_array($curl, [
+                CURLOPT_URL             => $pro6pp_url,
+                CURLOPT_RETURNTRANSFER  => true,
+                CURLOPT_ENCODING        => "",
+                CURLOPT_MAXREDIRS       => 10,
+                CURLOPT_TIMEOUT         => 30,
+                CURLOPT_HTTP_VERSION    => CURL_HTTP_VERSION_1_1,
+                CURLOPT_CUSTOMREQUEST   => "GET",
+                CURLOPT_HTTPHEADER      => [
+                    "x-api-key: $pro6pp_key"
+                ],
+            ]);
+
+            $response           = curl_exec($curl);
+            $err                = curl_error($curl);
+
+            if ($err) {
+                wachthond($extdebug,2, 'PRO6PP cURL Error #:', $err);
+            } else {
+                $pro6pp_result  = json_decode($response, true);
+                $jobsArray      = $pro6pp_result['data'];
+            }
+
+            curl_close($curl);
+
+            wachthond($extdebug,2, 'pro6pp_result',     $pro6pp_result);
+
+            $adres_gemeente     = $pro6pp_result[0]['municipality'];
+            $adres_provincie    = $pro6pp_result[0]['province'];
+
+            wachthond($extdebug,2, 'adres_gemeente',    $adres_gemeente);
+            wachthond($extdebug,2, 'adres_provincie',   $adres_provincie);
+
+            $params_update_adres = [
+                'checkPermissions' => FALSE,
+                'debug' => $apidebug,
+                'where' => [
+                    ['id',          '=', $adres_id],
+//                  ['contact_id',  '=', $contact_id],
+                ],
+                'values' => [
+                    'Adresgegevens.Gemeente'    => $adres_gemeente,
+                    'Adresgegevens.Provincie'   => $adres_provincie,
+                ],
+            ];
+
+            wachthond($extdebug,3, 'params_update_adres',               $params_update_adres);
+            if ($adres_gemeente AND $adres_provincie) {
+                $result_update_adres = civicrm_api4('Address','update', $params_update_adres);
+            }
+            wachthond($extdebug,9, 'result_update_adres',               $result_update_adres);
+        }
+
+        if (!empty($adres_gemeente)) {
+
+            wachthond($extdebug,1, "########################################################################");
+            wachthond($extdebug,1, "### REGIO 1.4 ZOEK VAKANTIEREGIO OP",                     $adres_gemeente);
+            wachthond($extdebug,1, "########################################################################");
+
+            $params_options_regio = [
+                'checkPermissions' => FALSE,
+                    'debug' => $apidebug,
+                    'select' => [
+                        'value',
+                        'label', 
+                        'name',                         
+                        'description', 
+                    ],
+                    'where' => [
+                        ['option_group_id', '=', 722], 
+                        ['value',           '=', $adres_gemeente],
+                    ],
+            ];
+            wachthond($extdebug,7, 'params_options_regio',                  $params_options_regio);
+            $result_options_regio = civicrm_api4('OptionValue', 'get',      $params_options_regio);
+            wachthond($extdebug,9, 'result_options_regio',                  $result_options_regio);
+
+            $regio_value        = $result_options_regio[0]['value']         ?? NULL;
+            $regio_label        = $result_options_regio[0]['label']         ?? NULL;
+            $regio_name         = $result_options_regio[0]['name']          ?? NULL;
+            $regio_description  = $result_options_regio[0]['description']   ?? NULL;
+
+            $regio_label        = strtolower(trim($regio_label));
+
+            wachthond($extdebug,1, 'regio_value',       $regio_value);
+            wachthond($extdebug,1, 'regio_label',       $regio_label);
+            wachthond($extdebug,1, 'regio_name',        $regio_name);
+            wachthond($extdebug,4, 'regio_description', $regio_description);
+        }
+
+        if (!empty($adres_plaats)) {
+
+            wachthond($extdebug,1, "########################################################################");
+            wachthond($extdebug,1, "### REGIO 1.5 HOUD REKENING MET UITZONDERINGEN",            $adres_plaats);
+            wachthond($extdebug,1, "########################################################################");
+
+            if (in_array($adres_plaats, array("Eemnes", "Abcoude"))) {
+                $regio_name = '1noord';
+                wachthond($extdebug,2, "alsnog regio noord voor $adres_plaats uit de gemeente $adres_gemeente",                  "[toch noord]");
+            }
+
+            ######################################################################
+            # NOORD
+            # Flevoland Alle gemeenten behalve Zeewolde
+            # Gelderland    (gemeente) Hattem
+            # Utrecht   Eemnes en wat vroeger gemeente Abcoude was
+            ######################################################################
+
+            if (in_array($adres_plaats, array("Zeewolde", "Werkendam", "Sleeuwijk", "Nieuwendijk", "Woudrichem"))) {
+                $regio_name = '2midden';
+                wachthond($extdebug,2, "alsnog regio midden voor $adres_plaats uit de gemeente $adres_gemeente",                  "[toch midden]");
+            }
+
+            //        Almkerk, Andel, Babyloniënbroek, Drongelen, Dussen, Eethen, Genderen, Giessen, Hank, Meeuwen, Nieuwendijk, Rijswijk (Altena), Sleeuwijk, Uitwijk, Veen, Waardhuizen, Werkendam, Wijk en Aalburg, Woudrichem.
+
+            ######################################################################
+            # MIDDEN
+            # Noord-Brabant     Altena (behalve de kernen Hank en Dussen)
+            # Flevoland         (gemeente) Zeewolde
+            # Montferland       behalve wat vroeger gemeente Didam was
+            # Utrecht           behalve Eemnes en wat vroeger gemeente Abcoude was
+            ######################################################################
+
+            if (in_array($adres_plaats, array("Didam", "Dodewaard", "Hank", "Dussen"))) {
+                $regio_name = '3zuid';
+                wachthond($extdebug,2, "alsnog regio zuid voor $adres_plaats uit de gemeente $adres_gemeente",                  "[toch zuid]");
+            }
+
+            // M61: op basis van eigen onderzoek ook nog deze uitzonderingen voor de gemeente Altena
+            // Midden: Almkerk, Waardhuizen 
+
+            if (in_array($adres_plaats, array("Babyloniënbroek", "Wijk En Aalburg", "Dussen", "Meeuwen", "Eethen", "Genderen", "Drongelen"))) {
+                $regio_name = '3zuid';
+                wachthond($extdebug,2, "alsnog regio zuid voor $adres_plaats uit de gemeente $adres_gemeente",                  "[toch zuid]");
+            }
+
+            ######################################################################
+            # ZUID
+            # Neder-Betuwe (alleen wat vroeger gemeente Dodewaard was)
+            # Noord-Brabant Alle gemeenten behalve Woudrichem 
+            # en de kernen Sleeuwijk, Nieuwendijk en Werkendam in de gemeente Altena 
+            ######################################################################
+        }
+
+        wachthond($extdebug,1, "########################################################################");
+        wachthond($extdebug,1, "### REGIO 1.6 UPDATE ADRES MET NIEUWE / AANVULLENDE WAARDEN");
+        wachthond($extdebug,1, "########################################################################");
+
+        $adres_update_array = array(
+
+            'adres_postcode'        => $adres_postcode,
+            'adres_street_name'     => $adres_street_name,
+            'adres_street_number'   => $adres_street_number,
+            'adres_plaats'          => $adres_plaats,
+            'adres_gemeente'        => $adres_gemeente,
+            'adres_provincie'       => $adres_provincie,
+
+            'adres_lat'             => $adres_lat,
+            'adres_lng'             => $adres_lng,
+
+            'adres_construction'    => $adres_construction,
+            'adres_surfacearea'     => $adres_surfacearea,
+
+            'adres_vakantieregio'   => $regio_name,
+        );
+
+        wachthond($extdebug,3, "adres_id",              $adres_id);
+        wachthond($extdebug,3, "adres_update_array",    $adres_update_array);
+
+        werving_civicrm_address_update($contact_id, $adres_id, $adres_update_array);
+
+
+        if (!empty($regio_name)) {
+
+            wachthond($extdebug,1, "########################################################################");
+            wachthond($extdebug,1, "NIEUWE WAARDE VAKANTIEREGIO ($regio_name)",                  $regio_label);
+            wachthond($extdebug,1, "########################################################################");        
+
+            return $regio_name;
+        }
+
+    }
+}
+
+function werving_civicrm_vakantieregio_write($contactid, $regio) {
+
+    $extdebug       = 2;  //  1 = basic // 2 = verbose // 3 = params / 4 = results
+    $apidebug       = FALSE;
+
+    $contact_id     =   $contactid;
+    $vakantieregio  =   $regio;
+
+    wachthond($extdebug,2, "########################################################################");
+    wachthond($extdebug,1, "### REGIO WRITE - RETREIVE CURRENT VALUES",          "[CID: $contact_id]");
+    wachthond($extdebug,2, "########################################################################");
+
+    if ($contact_id > 0) {
+
+        $params_contact_get = [
+            'checkPermissions' => FALSE,
+            'debug'  => $apidebug,              
+            'select' => [
+                'display_name',
+                'WERVING.vakantieregio',
+            ],
+            'where' => [
+                ['id',  'IN', [$contact_id]],
+            ],
+        ];
+    }        
+    wachthond($extdebug,7, 'params_contact_get',            $params_contact_get);
+    $result_contact_get    = civicrm_api4('Contact','get',  $params_contact_get);
+    wachthond($extdebug,9, 'result_contact_get',            $result_contact_get);
+
+    if (isset($result_contact_get))    {
+        $display_name           = $result_contact_get[0]['display_name']            ?? NULL;
+        $werving_vakantieregio  = $result_contact_get[0]['WERVING.vakantieregio']   ?? NULL;
+
+        wachthond($extdebug,1, 'display_name',              $display_name);
+        wachthond($extdebug,1, 'werving_vakantieregio',     $werving_vakantieregio);
+    }
+
+    wachthond($extdebug,2, "########################################################################");
+    wachthond($extdebug,1, "### REGIO WRITE - SCHRIJF WAARDE NAAR DB",            "[REGIO: $vakantieregio]");
+    wachthond($extdebug,2, "########################################################################");
+
+    if (!empty($werving_vakantieregio)) {
+        wachthond($extdebug,1, 'SKIP: vakantieregio had al een waarde in de database', "$werving_vakantieregio");
+        return;
+    }
+
+    if (in_array($vakantieregio, array("1noord", "2midden", "3zuid"))) {
+
+        $params_update_vakantieregio = [
+            'checkPermissions' => FALSE,
+            'debug' => $apidebug,
+            'where' => [
+                ['id', '=', $contact_id],
+            ],
+            'values' => [
+                'WERVING.vakantieregio' => $vakantieregio,
+            ],
+        ];
+        wachthond($extdebug,3, 'params_update_vakantieregio',           $params_update_vakantieregio);
+        wachthond($extdebug,1, 'DONE: vakantieregio via api4 naar database geschreven', "$vakantieregio");        
+        $result_update_vakantieregio = civicrm_api4('Contact','update', $params_update_vakantieregio);
+        wachthond($extdebug,3, 'result_update_vakantieregio',           $result_update_vakantieregio);
+    }
+}
+
+function werving_civicrm_pro6pp_postcode($contactid, $postcode, $huisnummer, $nummersuffix = NULL) {
+
+    $extdebug               = 0;  //  1 = basic // 2 = verbose // 3 = params / 4 = results
+    $apidebug               = FALSE;
+
+    $contact_id             =   $contactid;
+    $adres_postcode         =   $postcode;
+    $adres_street_number    =   $huisnummer;
+    $adres_street_suffix    =   $nummersuffix;
+
+    wachthond($extdebug,2, "########################################################################");
+    wachthond($extdebug,2, "### PRO6PP - ZOEK GEGEVENS OP VIA PRO6PP API MET POSTCODE / HUISNUMMER");
+    wachthond($extdebug,2, "########################################################################");
+
+    wachthond($extdebug,2, 'adres_postcode',        $adres_postcode);
+    wachthond($extdebug,1, 'adres_street_number',   $adres_street_number);
+    wachthond($extdebug,1, 'adres_street_suffix',   $adres_street_suffix); 
+
+    if (empty($adres_postcode) OR empty($adres_street_number)) {
+        return;
+    }
+
+    $pro6pp_key     =  "6P84FpVsdq5pRunD";
+    $pro6pp_url     =  "https://api.pro6pp.nl/v2/autocomplete/nl?postalCode=$adres_postcode&streetNumber=$adres_street_number&authKey=$pro6pp_key";
+
+    wachthond($extdebug,4, 'pro6pp_url', $pro6pp_url);
+
+    $curl = curl_init();
+    curl_setopt_array($curl, [
+        CURLOPT_URL             => $pro6pp_url,
+        CURLOPT_RETURNTRANSFER  => true,
+        CURLOPT_ENCODING        => "",
+        CURLOPT_MAXREDIRS       => 10,
+        CURLOPT_TIMEOUT         => 30,
+        CURLOPT_HTTP_VERSION    => CURL_HTTP_VERSION_1_1,
+        CURLOPT_CUSTOMREQUEST   => "GET",
+        CURLOPT_HTTPHEADER      => [
+            "x-api-key: $pro6pp_key"
+        ],
+    ]);
+
+    $response           = curl_exec($curl);
+    $err                = curl_error($curl);
+
+    if ($err) {
+        wachthond($extdebug,2, 'PRO6PP cURL Error #:', $err);
+    } else {
+        $pro6pp_result  = json_decode($response, true);
+        $jobsArray      = $pro6pp_result['data'];
+    }
+
+    curl_close($curl);
+
+    wachthond($extdebug,2, 'pro6pp_result', $pro6pp_result);
+
+    $adres_postcode         = $pro6pp_result['postalCode'];
+    $adres_street_name      = $pro6pp_result['street'];
+    $adres_street_number    = $pro6pp_result['streetNumber'];    
+    $adres_plaats           = $pro6pp_result['settlement'];
+    $adres_gemeente         = $pro6pp_result['municipality'];
+    $adres_provincie        = $pro6pp_result['province'];
+
+    $adres_lat              = $pro6pp_result['lat'];
+    $adres_lng              = $pro6pp_result['lng'];
+
+    $adres_construction     = $pro6pp_result['constructionYear'];
+    $adres_surfacearea      = $pro6pp_result['surfaceArea'];
+
+    wachthond($extdebug,2, 'adres_postcode',        $adres_postcode);
+    wachthond($extdebug,2, 'adres_street_name',     $adres_street_name);
+    wachthond($extdebug,2, 'adres_street_number',   $adres_street_number);
+    wachthond($extdebug,2, 'adres_plaats',          $adres_plaats);
+    wachthond($extdebug,2, 'adres_gemeente',        $adres_gemeente);
+    wachthond($extdebug,2, 'adres_provincie',       $adres_provincie);
+
+    wachthond($extdebug,2, 'adres_lat',             $adres_lat);
+    wachthond($extdebug,2, 'adres_lng',             $adres_lng);
+
+    wachthond($extdebug,2, 'adres_construction',    $adres_construction);
+    wachthond($extdebug,2, 'adres_surfacearea',     $adres_surfacearea);
+
+    $pro6ppresult_array = array(
+
+        'adres_postcode'        => $adres_postcode,
+        'adres_street_name'     => $adres_street_name,
+        'adres_street_number'   => $adres_street_number,
+        'adres_plaats'          => $adres_plaats,
+        'adres_gemeente'        => $adres_gemeente,
+        'adres_provincie'       => $adres_provincie,
+
+        'adres_lat'             => $adres_lat,
+        'adres_lng'             => $adres_lng,
+
+        'adres_construction'    => $adres_construction,
+        'adres_surfacearea'     => $adres_surfacearea,
+    );
+
+    return $pro6ppresult_array;
+}
+
+
+function splitstreetaddress($streetAddress) {
+    
+    $result = array();
+    /*
+     * do nothing if streetAddress is empty
+     */
+
+    if (!empty($streetAddress)) {
+        /*
+         * split into parts separated by spaces
+         */
+
+        $addressParts       = explode(" ", $streetAddress);
+        $foundStreetNumber  = false;
+        $streetName         = null;
+        $streetNumber       = null;
+        $streetUnit         = null;
+ 
+        foreach($addressParts as $partKey => $addressPart) {
+
+            /*
+             * if the part is numeric, there are several possibilities:
+             * - if the partKey is 0 so it is the first element, it is
+             *   assumed it is part of the street_name to cater for 
+             *   situation like 2e Wormenseweg
+             * - if not the first part and there is no street_number yet (foundStreetNumber
+             *   is false), it is assumed this numeric part contains the street_number
+             * - if not the first part but we already have a street_number (foundStreetNumber
+             *   is true) it is assumed this is part of the street_unit
+             */
+
+            if (is_numeric($addressPart)) {
+ 
+                if ($foundStreetNumber == false) {
+                    $streetNumber = $addressPart;
+                    $foundStreetNumber = true;
+                } else {
+                    $streetUnit .= " ".$addressPart;
+                }
+ 
+            } else {
+                /*
+                 * if part is not numeric, there are several possibilities:
+                 * - if the street number is found, set the whole part to streetUnit
+                 * - if there is no streetNumber yet and it is the first part, set the
+                 *   whole part to streetName
+                 * - if there is no streetNumber yet and it is not the first part,
+                 *   check all digits:
+                 *   - if the first digit is numeric, put the numeric part in streetNumber
+                 *     and all non-numerics to street_unit
+                 *   - if the first digit is not numeric, put the lot into streetName
+                 */
+ 
+                if ($foundStreetNumber == true) {
+ 
+                    if (!empty($streetName)) {
+                        $streetUnit .= " ".$addressPart;
+                    } else {
+                        $streetName .= " ".$addressPart;
+                    }
+ 
+                } else {
+ 
+                    if ($partKey == 0) {
+                        $streetName .= $addressPart;
+                    } else {
+ 
+                        $partLength = strlen($addressPart);
+ 
+                        if (is_numeric(substr($addressPart, 0, 1))) {
+ 
+                            for ($i=0; $i<$partLength; $i++) {
+ 
+                                if (is_numeric(substr($addressPart, $i, 1))) {
+                                    $streetNumber .= substr($addressPart, $i, 1);
+                                    $foundStreetNumber = true;
+                                } else {
+                                    $streetUnit .= " ".substr($addressPart, $i, 1);
+                                }
+                            }
+                        } else {
+                            $streetName .= " ".$addressPart;
+                        }
+                    }
+                }
+            }
+        }
+        $result['street_name']   = trim($streetName);
+        $result['street_number'] = $streetNumber;
+        $result['street_suffix'] = trim($streetUnit);
+        /*
+         * if we still have no street_number, add contact to checkgroup
+         */
+        
+    }
+
+    return $result;
+}
+
+function werving_civicrm_address_update($contactid, $adresid, $adres_array) {
+
+    $extdebug               = 3;  //  1 = basic // 2 = verbose // 3 = params / 4 = results
+    $apidebug               = FALSE;
+
+    $contact_id             = $contactid;
+    $address_id             = $adresid;
+
+    wachthond($extdebug,2, "########################################################################");
+    wachthond($extdebug,2, "### ADRES - UPDATE PRIMARY ADRES MET NIEUWE GEGEVENS",          "[START]");
+    wachthond($extdebug,2, "########################################################################");
+
+    $adres_postcode         = $adres_array['adres_postcode'];
+    $adres_street_name      = $adres_array['adres_street_name'];
+    $adres_street_number    = $adres_array['adres_street_number'];
+    $adres_street_suffix    = $adres_array['adres_street_suffix'];
+
+    if ($adres_street_name AND $adres_street_number) {
+        $adres_street_address   = "$adres_street_name $adres_street_number$adres_street_suffix";
+    }
+
+    $adres_plaats           = $adres_array['adres_plaats'];
+    $adres_gemeente         = $adres_array['adres_gemeente'];
+    $adres_provincie        = $adres_array['adres_provincie'];
+
+    $adres_lat              = $adres_array['adres_lat'];
+    $adres_lng              = $adres_array['adres_lng'];
+
+    $adres_construction     = $adres_array['adres_construction'];
+    $adres_surfacearea      = $adres_array['adres_surfacearea'];
+
+    $adres_vakantieregio    = $adres_array['adres_vakantieregio'];
+
+    wachthond($extdebug,2, 'contact_id',            $contact_id);
+    wachthond($extdebug,2, 'address_id',            $address_id);
+
+    wachthond($extdebug,2, 'adres_postcode',        $adres_postcode);
+    wachthond($extdebug,2, 'adres_street_name',     $adres_street_name);
+    wachthond($extdebug,2, 'adres_street_number',   $adres_street_number);
+    wachthond($extdebug,2, 'adres_street_address',  $adres_street_address);
+
+    wachthond($extdebug,2, 'adres_plaats',          $adres_plaats);
+    wachthond($extdebug,2, 'adres_gemeente',        $adres_gemeente);
+    wachthond($extdebug,2, 'adres_provincie',       $adres_provincie);
+
+    wachthond($extdebug,2, 'adres_lat',             $adres_lat);
+    wachthond($extdebug,2, 'adres_lng',             $adres_lng);
+
+    wachthond($extdebug,2, 'adres_construction',    $adres_construction);
+    wachthond($extdebug,2, 'adres_surfacearea',     $adres_surfacearea);
+
+    $params_update_adres = [
+        'checkPermissions' => FALSE,
+        'debug' => $apidebug,
+        'where' => [
+            ['id',          '=', $address_id],
+//          ['contact_id',  '=', $contact_id],
+        ],
+        'values' => [
+            'postal_code'               => $adres_postcode,
+//          'street_name'               => $adres_street_name,
+//          'street_number'             => $adres_street_number,
+//          'street_number_suffix'      => $adres_street_suffix,
+//          'city'                      => $adres_plaats,
+//          'Adresgegevens.Gemeente'    => $adres_gemeente,
+//          'Adresgegevens.Provincie'   => $adres_provincie,
+//          'geo_code_1'                => $adres_lat,
+//          'geo_code_2'                => $adres_lng,
+//          'street_type'               => $adres_surfacearea,
+        ],
+    ];
+
+    if ($adres_postcode)        { $params_update_adres['values']['postal_code']             = $adres_postcode;          }
+    if ($adres_street_name)     { $params_update_adres['values']['street_number_name']      = $adres_street_name;       }
+    if ($adres_street_number)   { $params_update_adres['values']['street_number_number']    = $adres_street_number;     }
+    if ($adres_street_suffix)   { $params_update_adres['values']['street_number_suffix']    = $adres_street_suffix;     }
+    if ($adres_street_address)  { $params_update_adres['values']['street_address']          = $adres_street_address;    }
+    if ($adres_plaats)          { $params_update_adres['values']['city']                    = $adres_plaats;            }
+    if ($adres_gemeente)        { $params_update_adres['values']['Adresgegevens.Gemeente']  = $adres_gemeente;          }
+    if ($adres_provincie)       { $params_update_adres['values']['Adresgegevens.Provincie'] = $adres_provincie;         }
+    if ($adres_lat)             { $params_update_adres['values']['geo_code_1']              = $adres_lat;               }
+    if ($adres_lng)             { $params_update_adres['values']['geo_code_2']              = $adres_lng;               }
+    if ($adres_surfacearea)     { $params_update_adres['values']['street_type']             = $adres_surfacearea;       }
+    if ($adres_surfacearea)     { $params_update_adres['values']['street_type']             = $adres_surfacearea;       }
+
+    wachthond($extdebug,3, 'params_update_adres',               $params_update_adres);
+    if ($address_id > 0) {
+        $result_update_adres = civicrm_api4('Address','update', $params_update_adres);
+    }
+    wachthond($extdebug,9, 'result_update_adres',               $result_update_adres);
+
+    wachthond($extdebug,2, "########################################################################");
+    wachthond($extdebug,2, "### ADRES - UPDATE PRIMARY ADRES MET NIEUWE GEGEVENS",          "[EINDE]");
+    wachthond($extdebug,2, "########################################################################");
+
+
+
+}
