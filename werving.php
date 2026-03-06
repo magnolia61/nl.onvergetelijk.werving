@@ -30,17 +30,49 @@ function werving_civicrm_enable(): void {
 function werving_civicrm_customPre(string $op, int $groupID, int $entityID, array &$params): void {
 
     // -------------------------------------------------------------------------
-    // STAP 0: INITIALISATIE
+    // STAP 0: INITIALISATIE & REQUEST-BREDE SKIP
     // -------------------------------------------------------------------------
     
+    static $werving_request_skip = FALSE;
+    static $processing_internal  = FALSE;
+
+    // 1. Als dit request eerder al als 'nieuw contact' is gemarkeerd: STOP direct.
+    if ($werving_request_skip) return;
+
+    // 2. Voorkom recursie (deze blijft nodig voor de API-calls verderop)
+    if ($processing_internal) return;
+
+    $extdebug = 3;
+
+    // --- DE WATERDICHTE SKIP LOGICA ---
+    // Als de operatie 'create' is OF het ID leeg is, blokkeren we Werving
+    // voor de volledige duur van dit PHP-proces.
+    if (empty($entityID) || $op === 'create') {
+        wachthond($extdebug, 4, "WERVING [PRE] SKIP: Nieuw contact (op: $op, id: leeg). Blokkade voor dit request.");
+        $werving_request_skip = TRUE; 
+        return;
+    }
+
+    // Controleer of het contact daadwerkelijk al bestaat in de database
+    // (Extra slot op de deur om DB-flushing te voorkomen)
+    $contactExists = CRM_Core_DAO::getFieldValue('CRM_Contact_DAO_Contact', $entityID, 'id');
+    if (!$contactExists) {
+        wachthond($extdebug, 4, "WERVING [PRE] SKIP: Contact $entityID niet fysiek in DB. Blokkade voor dit request.");
+        $werving_request_skip = TRUE;
+        return; 
+    }
+
+    $processing_internal = TRUE;
+
+/*    
     static $processing_werving_custompre = false;
     if ($processing_werving_custompre) return;
     $processing_werving_custompre = true;
-
-    $extdebug       = 3;     // 1=Basic, 2=Flow, 3=Data
-    $extwrite       = 1;     // 1=Schrijf wijzigingen terug
-    $apidebug       = FALSE; 
-    $profilewerving = [270]; 
+*/
+    $extdebug            = 3;     // 1=Basic, 2=Flow, 3=Data
+    $extwrite            = 1;     // 1=Schrijf wijzigingen terug
+    $apidebug            = FALSE; 
+    $profilewerving      = [270]; 
     $today_datetime      = date("Y-m-d H:i:s");
     $today_datetime_past = date("Y-m-d H:i:s", strtotime("-1 day"));
 
@@ -101,7 +133,7 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         'mee_contact_2234'                => 'WERVING.mee_contact',
     ];
 
-wachthond($extdebug, 1, "########################################################################");
+    wachthond($extdebug, 1, "########################################################################");
     wachthond($extdebug, 1, "### WERVING [PRE] 1.1 GET VALUES & NORMALIZE", "");
     wachthond($extdebug, 1, "########################################################################");
 
@@ -466,7 +498,7 @@ wachthond($extdebug, 1, "#######################################################
  */
 function werving_inject_params(array &$params, array $data, array $field_ids): array {
 
-    $extdebug = 3;
+    $extdebug = 0;
     
     $external_updates = [];
 
