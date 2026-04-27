@@ -1,15 +1,17 @@
 <?php
 
-// === FUNCTIE-INDEX ===
-// Bestand: werving.php
-// Functies in dit bestand:
-//   werving_get_field_map()      De "Single Source of Truth" voor alle CiviCRM custom fields binnen
-//   werving_civicrm_customPre()  De "Portier" voor de Werving-module. Deze CiviCRM hook vangt
-//   werving_civicrm_configure()  De "Rekenmachine" voor de Werving-module. Deze functie bevat 100%
-//   werving_civicrm_config()     Implements hook_civicrm_config().
-//   werving_civicrm_install()    Implements hook_civicrm_install().
-//   werving_civicrm_enable()     Implements hook_civicrm_enable().
-// === EINDE FUNCTIE-INDEX ===
+/**
+ * =======================================================================================
+ * FUNCTIE-INDEX: werving.php
+ * =======================================================================================
+ *   werving_get_field_map()      De "Single Source of Truth" voor alle CiviCRM custom fields binnen
+ *   werving_civicrm_customPre()  De "Portier" voor de Werving-module. Deze CiviCRM hook vangt
+ *   werving_civicrm_configure()  De "Rekenmachine" voor de Werving-module. Deze functie bevat 100%
+ *   werving_civicrm_config()     Implements hook_civicrm_config().
+ *   werving_civicrm_install()    Implements hook_civicrm_install().
+ *   werving_civicrm_enable()     Implements hook_civicrm_enable().
+ * =======================================================================================
+ */
 
 require_once 'werving.civix.php';
 require_once 'werving.functions.php';
