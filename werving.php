@@ -297,7 +297,7 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
     $new_mee_toelichting = $val_mee_toelichting;
 
     // --- 1. OVERRIDE: IS DE PERSOON AL INGESCHREVEN ALS LEIDING? ---
-    $array_allpart_ditjaar    = base_find_allpart($contact_id, $mee_update_nextkamp_start);
+    $array_allpart_ditjaar    = base_find_allpart($contact_id, $mee_update_nextkamp_start) ?: [];
     $ditjaar_pos_leid_part_id = $array_allpart_ditjaar['result_allpart_pos_leid_part_id'] ?? 0;
 
     if ($ditjaar_pos_leid_part_id > 0) {
