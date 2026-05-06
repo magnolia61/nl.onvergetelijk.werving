@@ -94,7 +94,7 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         return;
     }
 
-    $extdebug   = 4; 
+    $extdebug = 'werving.custompre'; // Kanaal voor centrale debug-config; niveau wordt opgezocht in ozk.debug.config.php
 //  $profileids = [270, 102, 142, 160]; // Bekende profielen (als fallback voor als webform faalt)
     $profileids = [270]; // Alleen het specifieke Werving profiel als fallback
 
@@ -105,6 +105,10 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
     if (!in_array($groupID, $profileids)) {
         return;
     }
+
+    $processing_werving_pre  = TRUE;
+    $werving_custompre_start = microtime(TRUE);
+    watchdog('civicrm_timing', base_microtimer("START werving_custompre [GID: $groupID / EID: $entityID]"), NULL, WATCHDOG_DEBUG);
 
     wachthond($extdebug, 1, "########################################################################");
     wachthond($extdebug, 1, "### WERVING [PRE] 1.0 EXTRACTIE & MAPPING",                       "[MAP]");
@@ -141,7 +145,7 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
     // Deze injecteren we naadloos terug in de originele $params transactie, 
     // zodat CiviCRM ze straks samen met de rest van het formulier opslaat.
     if (!empty($data_to_inject)) {
-        $success_list = base_inject_params($params, $data_to_inject, $field_ids, $entityID, "WERVING");
+        $success_list = base_inject_params($params, $data_to_inject, $field_ids, $entityID, "WERVING", $extdebug);
 
         if (!empty($success_list)) {
             wachthond($extdebug, 1, "WERVING [PRE] SUCCES: Injectie voltooid", $success_list);
@@ -167,6 +171,10 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
     wachthond($extdebug, 1, "########################################################################");
     wachthond($extdebug, 1, "### WERVING [PRE] EINDE VERWERKING",                        "[SUCCESS]");
     wachthond($extdebug, 1, "########################################################################");
+
+    $total_werving_custompre_duur = number_format(microtime(TRUE) - $werving_custompre_start, 3);
+    wachthond($extdebug, 3, "WERVING [PRE] duur totaal: {$total_werving_custompre_duur}s");
+    watchdog('civicrm_timing', base_microtimer("EINDE werving_custompre"), NULL, WATCHDOG_DEBUG);
 }
 
 /**
@@ -186,9 +194,12 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
  */
 function werving_civicrm_configure(int $contact_id, string $context = 'direct', array $params_werving = []): array {
     
-    $extdebug       = 3;
+    $extdebug = 'werving.configure'; // Kanaal voor centrale debug-config; niveau wordt opgezocht in ozk.debug.config.php
     $today_datetime = date("Y-m-d H:i:s");
-    
+
+    $werving_configure_start = microtime(TRUE);
+    watchdog('civicrm_timing', base_microtimer("START werving_configure [CID: $contact_id / CTX: $context]"), NULL, WATCHDOG_DEBUG);
+
     wachthond($extdebug, 2, "########################################################################");
     wachthond($extdebug, 1, "### WERVING CONFIGURE - 1.0 DATA INLADEN UIT DATABASE",    "[FALLBACK]");
     wachthond($extdebug, 2, "########################################################################");
@@ -199,7 +210,43 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
     if (empty($cont)) return [];
 
     wachthond($extdebug, 2, "########################################################################");
-    wachthond($extdebug, 1, "### WERVING CONFIGURE - 2.0 BEPAAL LEIDENDE WAARDEN",      "[INPUT]");
+    wachthond($extdebug, 1, "### WERVING CONFIGURE - 1.1 LEEFTIJD BEREKENEN",             "[LEEFTIJD]");
+    wachthond($extdebug, 2, "########################################################################");
+
+    $birth_date = $cont['birth_date'] ?? NULL;
+    if (!empty($birth_date)) {
+        
+        // Leeftijd op DIT moment (handig voor UI weergave)
+        $leeftijd_vantoday      = partstatus_leeftijd_diff('vandaag', $birth_date, $today_datetime);
+        $new_leeftijd_decimalen = (float)$leeftijd_vantoday['leeftijd_decimalen'];
+        $new_leeftijd_rondjaren = (int)$leeftijd_vantoday['leeftijd_rondjaren'];
+
+        // Belangrijkste meting: Leeftijd exact op de startdag van hun volgende kamp
+        $lastnext_kamp          = find_lastnext($today_datetime);
+        $leeftijd_nextkamp      = partstatus_leeftijd_diff('nextkamp', $birth_date, $lastnext_kamp['next_start_date']);
+        $new_nextkamp_decimalen = (float)$leeftijd_nextkamp['leeftijd_decimalen'];
+        $new_nextkamp_rondjaren = (int)$leeftijd_nextkamp['leeftijd_rondjaren'];
+        $new_nextkamp_rondmaand = (int)$leeftijd_nextkamp['leeftijd_rondmaand'];
+    }
+
+    wachthond($extdebug, 2, "########################################################################");
+    wachthond($extdebug, 1, "### WERVING CONFIGURE - 1.2 REGISTRATIE CHECK",           "[REGISTRATIE]");
+    wachthond($extdebug, 2, "########################################################################");
+
+    // Voorlopige berekening van de referentiedatum — nauwkeurig herberekend in sectie 3.2
+    // na ophalen van de formulierwaarden. Nodig zodat base_find_allpart geen NULL krijgt.
+    $mee_update_nextkamp_start  = find_lastnext($today_datetime)['next_start_date'] ?? NULL;
+
+    // We halen hier zowel de deelnemer- als leidingstatus op voor het komende jaar.
+    $array_allpart_ditjaar      = base_find_allpart($contact_id, $mee_update_nextkamp_start)    ?: [];
+    $ditjaar_pos_deel_part_id   = $array_allpart_ditjaar['result_allpart_pos_deel_part_id']     ?? 0;
+    $ditjaar_pos_leid_part_id   = $array_allpart_ditjaar['result_allpart_pos_leid_part_id']     ?? 0;
+
+    $is_deelnemer_nu            = ($ditjaar_pos_deel_part_id > 0);
+    $is_te_jong                 = (isset($new_nextkamp_decimalen) && $new_nextkamp_decimalen < 17.0);
+
+    wachthond($extdebug, 2, "########################################################################");
+    wachthond($extdebug, 1, "### WERVING CONFIGURE - 2.0 BEPAAL LEIDENDE WAARDEN",           "[INPUT]");
     wachthond($extdebug, 2, "########################################################################");
 
     // FORMULIER IS LEIDEND: Als een waarde in $params_werving zit (dus vers uit een formulier komt),
@@ -215,19 +262,38 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
     $val_mee_status             = $params_werving['WERVING.mee_status']             ?? $cont['mee_status']                  ?? NULL;
     $val_mee_toelichting        = $params_werving['WERVING.mee_toelichting']        ?? $cont['mee_toelichting']             ?? NULL;
 
-    // --- AUTOMATISCHE DATUM BELANGSTELLING (WEBFORM FIX) ---
-    // Omdat Drupal Webforms de 'datum_belangstelling' niet zelf meesturen, genereren we deze hier.
-    // Zodra we zien dat dit script via een webform draait EN de gebruiker keuzes heeft gemaakt,
-    // registreren we VANDAAG als het actieve moment van belangstelling.
-    if ($context === 'hook') {
-        if (isset($params_werving['WERVING.Welke_kampweek']) || isset($params_werving['WERVING.Welke_leeftijdsgroep']) || isset($params_werving['WERVING.mee_verwachting'])) {
-            $new_datum_belangstelling   = $today_datetime; 
-            $val_datum_belangstelling   = $today_datetime; 
-            wachthond($extdebug, 1, "AUTOMATISCHE DATUM", "Formulier ingevuld: datum belangstelling gezet op VANDAAG.");
+    wachthond($extdebug, 2, "########################################################################");
+    wachthond($extdebug, 1, "### WERVING CONFIGURE - 3.0 AUTOMATISCHE DATUM BELANGSTELLING", "[DATUM]");
+    wachthond($extdebug, 2, "########################################################################");
+
+    $valid_leeftijdsgroepen = ['kinderkamp', 'brugkamp', 'tienerkamp', 'jeugdkamp'];
+    $valid_kampweken        = ['week1', 'week2', 'maaktnietuit'];
+
+    $input_groep            = $params_werving['WERVING.Welke_leeftijdsgroep'] ?? NULL;
+    $input_week             = $params_werving['WERVING.Welke_kampweek']       ?? NULL;
+
+    // Gebruik (int) of de ? 1 : 0 shorthand om booleans te forceren naar integers
+    $heeft_belang_input     = (in_array($input_groep, $valid_leeftijdsgroepen) || in_array($input_week, $valid_kampweken)) ? 1 : 0;
+
+    if ($is_deelnemer_nu || $is_te_jong) {
+        // RESET ALLE WERVINGSVELDEN VOOR NIET-VRIJWILLIGERS
+        $new_datum_belangstelling   = NULL;
+        $new_mee_status             = NULL;
+        $val_datum_belangstelling   = NULL;
+        $val_mee_status             = NULL;
+        wachthond($extdebug, 1, "POORTWACHTER RESET", "Contact voldoet niet aan profiel: velden geleegd.");
+
+    } else {
+        // 2. BEHOUD HISTORIE: Zorg dat de oude datum niet 'verdwijnt' uit de injectie
+        $new_datum_belangstelling = $val_datum_belangstelling;
+
+        // 3. VERNIEUWING: Alleen bij geverifieerde nieuwe input de datum naar VANDAAG zetten
+        if ($context === 'hook' && $heeft_belang_input === 1 && !empty($val_datum_belangstelling)) {
+            $new_datum_belangstelling   = $today_datetime;
+            $val_datum_belangstelling   = $today_datetime;
+            wachthond($extdebug, 1, "AUTOMATISCHE DATUM", "Bestaande datum vernieuwd naar vandaag.");
         }
     }
-
-    $name_map = werving_get_field_map();
 
     wachthond($extdebug, 2, "########################################################################");
     wachthond($extdebug, 1, "### WERVING CONFIGURE - 3.1 LOGICA: KAMPWEKEN",             "[KAMPWEKEN]");
@@ -269,17 +335,17 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
     // Bepaal of de 'mee_update' nieuwer is dan de 'datum_belangstelling'
     $temp_mee_update = (date_biggerequal($val_datum_belangstelling, $val_mee_update) == 1 || empty($val_mee_update)) ? $val_datum_belangstelling : $val_mee_update;
 
-    $mee_update_fiscal_start        = curriculum_civicrm_fiscalyear($temp_mee_update);
-    $mee_update_fiscalyear_start    = $mee_update_fiscal_start['fiscalyear_start']      ?? NULL;
-    $mee_update_nextkamp_lastnext   = find_lastnext($temp_mee_update);
-    $mee_update_nextkamp_start      = $mee_update_nextkamp_lastnext['next_start_date']  ?? NULL;
-    $mee_update_nextkamp_year       = date('Y', strtotime($mee_update_nextkamp_start));
+    $mee_update_fiscal_start            = curriculum_civicrm_fiscalyear($temp_mee_update);
+    $mee_update_fiscalyear_start        = $mee_update_fiscal_start['fiscalyear_start']      ?? NULL;
+    $mee_update_nextkamp_lastnext       = find_lastnext($temp_mee_update);
+    $mee_update_nextkamp_start          = $mee_update_nextkamp_lastnext['next_start_date']  ?? NULL;
+    $mee_update_nextkamp_year           = date('Y', strtotime($mee_update_nextkamp_start));
     
     // FUNCTIONEEL GRENSKAMP: 
     // Na 18 juli is het actuele kamp fiscaal/operationeel al begonnen of afgelopen.
     // Aanmeldingen ná deze datum schuiven we automatisch door naar het kamp van het VOLGENDE jaar.
-    $grenskamp_zomer                = $mee_update_nextkamp_year . "-07-18 16:00:00"; 
-    $new_mee_update                 = $temp_mee_update;
+    $grenskamp_zomer                    = $mee_update_nextkamp_year . "-07-18 16:00:00"; 
+    $new_mee_update                     = $temp_mee_update;
 
     if (date_biggerequal($temp_mee_update, $grenskamp_zomer) == 1) {
         $mee_update_nextkamp_start_obj  = new DateTime($mee_update_nextkamp_start);
@@ -296,28 +362,35 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
     $new_mee_status      = $val_mee_status;
     $new_mee_toelichting = $val_mee_toelichting;
 
-    // --- 1. OVERRIDE: IS DE PERSOON AL INGESCHREVEN ALS LEIDING? ---
-    $array_allpart_ditjaar    = base_find_allpart($contact_id, $mee_update_nextkamp_start) ?: [];
-    $ditjaar_pos_leid_part_id = $array_allpart_ditjaar['result_allpart_pos_leid_part_id'] ?? 0;
+    // --- 1. OVERRIDE: IS DE PERSOON AL INGESCHREVEN (LEIDING OF DEELNEMER)? ---
+    // We bepalen eerst of er een actieve registratie is voor het komende jaar.
+    $active_pid = ($ditjaar_pos_leid_part_id > 0) ? $ditjaar_pos_leid_part_id : (($ditjaar_pos_deel_part_id > 0) ? $ditjaar_pos_deel_part_id : 0);
 
-    if ($ditjaar_pos_leid_part_id > 0) {
+    if ($active_pid > 0) {
         
-        // FUNCTIONEEL: Als iemand al een actieve, bevestigde leiding-inschrijving heeft voor dit jaar, 
-        // overschrijven we het hele belangstellingsproces en zetten we de status direct op 'Gaat Mee'.
-        $leid_part_details   = base_pid2part($ditjaar_pos_leid_part_id);
-        $reg_date            = $leid_part_details['register_date'] ?? $today_datetime;
+        $part_details = base_pid2part($active_pid);
+        $reg_date     = $part_details['register_date']  ?? $today_datetime;
+        $kampstart    = $part_details['part_kampstart'] ?? $mee_update_nextkamp_start;
 
-        $new_mee_status      = 'gaatmee';
-        $new_mee_verwachting = 'zekerwel';
-        $new_mee_update      = $reg_date; 
-        $new_mee_toelichting = ''; // Opschonen, want het is rond!
+        // FUNCTIONEEL: Indien ingeschreven en de kampstart ligt in de toekomst.
+        if (date_biggerequal($kampstart, $today_datetime) == 1) {
+            $new_mee_verwachting = 'zekerwel';
+            $new_mee_update      = $reg_date;
+        }
 
-        $kampstart           = $leid_part_details['part_kampstart'] ?? $mee_update_nextkamp_start;
-        $new_mee_update_year = date('Y', strtotime($kampstart));
+        // --- SPECIFIEKE LEIDING LOGICA ---
+        if ($ditjaar_pos_leid_part_id > 0) {
+            
+            // Als er een actieve leiding-registratie is voor dit jaar:
+            // 1. We zetten de status standaard op 'aangemeld'.
+            // 2. Tenzij de registratie al volledig bevestigd is (bijv. via een andere hook), dan blijft 'gaatmee'.
+            $new_mee_status      = ($val_mee_status === 'gaatmee') ? 'gaatmee' : 'aangemeld';
+//          $new_mee_toelichting = '';
+            $new_mee_update_year = date('Y', strtotime($kampstart));
+            wachthond($extdebug, 1, "STATUS MEE OVERRIDE", "Leiding inschrijving gevonden. Status: $new_mee_status.");
+        }
 
-        wachthond($extdebug, 1, "STATUS MEE OVERRIDE", "Leiding inschrijving gevonden. Status: gaatmee.");
-
-    } else {
+    } elseif ($heeft_belang_input === 1) {
         
         // --- 2. STANDAARD BELANGSTELLING LOGICA ---
         // FUNCTIONEEL: Bestaande vrijwilligers hebben vaak een oude status van vorig jaar staan.
@@ -350,42 +423,29 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
     }
 
     wachthond($extdebug, 2, "########################################################################");
-    wachthond($extdebug, 1, "### WERVING CONFIGURE - 3.5 LOGICA: REGIO & LEEFTIJD",          "[REGIO]");
+    wachthond($extdebug, 1, "### WERVING CONFIGURE - 3.5 LOGICA: REGIO",                     "[REGIO]");
     wachthond($extdebug, 2, "########################################################################");
 
     $new_vakantieregio = werving_civicrm_vakantieregio($contact_id);
 
-    $birth_date = $cont['birth_date'] ?? NULL;
-    if (!empty($birth_date)) {
-        
-        // Leeftijd op DIT moment (handig voor UI weergave)
-        $leeftijd_vantoday = partstatus_leeftijd_diff('vandaag', $birth_date, $today_datetime);
-        $new_leeftijd_decimalen = (float)$leeftijd_vantoday['leeftijd_decimalen'];
-        $new_leeftijd_rondjaren = (int)$leeftijd_vantoday['leeftijd_rondjaren'];
-
-        // Belangrijkste meting: Leeftijd exact op de startdag van hun volgende kamp
-        $lastnext_kamp = find_lastnext($today_datetime);
-        $leeftijd_nextkamp = partstatus_leeftijd_diff('nextkamp', $birth_date, $lastnext_kamp['next_start_date']);
-        $new_nextkamp_decimalen = (float)$leeftijd_nextkamp['leeftijd_decimalen'];
-        $new_nextkamp_rondjaren = (int)$leeftijd_nextkamp['leeftijd_rondjaren'];
-        $new_nextkamp_rondmaand = (int)$leeftijd_nextkamp['leeftijd_rondmaand'];
-    }
-
     wachthond($extdebug, 2, "########################################################################");
     wachthond($extdebug, 1, "### WERVING CONFIGURE - 4.0 VERZAMELAAR & OPSLAAN",          "[INJECTIE]");
     wachthond($extdebug, 2, "########################################################################");
+
+    $name_map = werving_get_field_map();
     
-    // VERZAMELAAR: 
-    // We loopen over alle velden in de name_map. Als we hierboven een $new_ variabele 
-    // hebben aangemaakt (bijv. $new_leeftijd_rondjaren), koppelen we die automatisch aan 
-    // de juiste API-sleutel voor opslag.
+    // VERZAMELAAR:
+    // Snapshot van alle gedefinieerde variabelen vóór de loop. Zo onderscheiden we
+    // "$new_x bewust op NULL gezet" (wél injecteren) van "$new_x nooit berekend" (niet injecteren).
+    // isset($$var_new) werkt hiervoor niet: dat returnt false voor zowel undefined als NULL.
+    $computed_vars  = array_keys(get_defined_vars());
     $data_to_inject = [];
     foreach ($name_map as $db_col => $api_name) {
         $api_parts = explode('.', (string)$api_name);
         $suffix    = end($api_parts);
         $var_new   = 'new_' . strtolower($suffix);
 
-        if (isset($$var_new) && $$var_new !== "") {
+        if (in_array($var_new, $computed_vars)) {
             $data_to_inject[$api_name] = $$var_new;
             wachthond($extdebug, 4, "Auto-Inject PREP: $api_name", $$var_new);
         }
@@ -393,9 +453,13 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
 
     // DIRECT OPSLAAN (Als het script standalone draait, buiten een formulier om)
     if ($context === 'direct' && !empty($data_to_inject)) {
-        $res = base_api_wrapper('Contact', $contact_id, $data_to_inject, "WERVING_CONF");
+        $res = base_api_wrapper('Contact', $contact_id, $data_to_inject, "WERVING_CONF", $extdebug);
         wachthond($extdebug, 9, "RESULT WERVING_CONF UPDATE", $res);
     }
+
+    $total_werving_configure_duur = number_format(microtime(TRUE) - $werving_configure_start, 3);
+    wachthond($extdebug, 3, "WERVING [CONFIGURE] duur totaal: {$total_werving_configure_duur}s");
+    watchdog('civicrm_timing', base_microtimer("EINDE werving_configure"), NULL, WATCHDOG_DEBUG);
 
     return $data_to_inject;
 }

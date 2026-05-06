@@ -10,7 +10,7 @@
 
 function werving_civicrm_activitymee($contactid, $mee_update, $displayname = NULL) {
 
-    $extdebug       = 0;  //  1 = basic // 2 = verbose // 3 = params / 4 = results
+    $extdebug = 'werving.activities'; // Kanaal voor centrale debug-config; niveau wordt opgezocht in ozk.debug.config.php
     $apidebug       = FALSE;
 
     $contact_id     = $contactid;
@@ -85,25 +85,30 @@ function werving_civicrm_activitymee($contactid, $mee_update, $displayname = NUL
     $ditjaar_pos_deel_kampkort          = $array_allpart_ditjaar['result_allpart_pos_deel_kampkort'];
     $ditjaar_pos_leid_kampkort          = $array_allpart_ditjaar['result_allpart_pos_leid_kampkort'];    
 
-    $ditjaar_kampkort_low               = preg_replace('/[^\w-]/', '', strtolower(trim((string)$ditjaar_kampkort))); // letters/0-9/dashes    
-    $ditjaar_kampkort_cap               = preg_replace('/[^\w-]/', '', strtoupper(trim((string)$ditjaar_kampkort))); // letters/0-9/dashes    
+    $ditjaar_kampkort    = NULL;
+    $ditjaar_kampfunctie = NULL;
+    $ditjaar_kamprol     = NULL;
 
     // ALS ER 1 IS DAN DIE
     if ($ditjaar_one_kampkort) {
-        $ditjaar_kampkort       = $ditjaar_one_kampkort;
-        $ditjaar_kampfunctie    = $ditjaar_one_kampfunctie;
+        $ditjaar_kampkort    = $ditjaar_one_kampkort;
+        $ditjaar_kampfunctie = $ditjaar_one_kampfunctie;
     }
     // ALS ER MEER ZIJN DAN DE POS
     if ($ditjaar_pos_kampkort) {
-        $ditjaar_kampkort       = $ditjaar_pos_kampkort;
-        $ditjaar_kampfunctie    = $ditjaar_pos_kampfunctie;
+        $ditjaar_kampkort    = $ditjaar_pos_kampkort;
+        $ditjaar_kampfunctie = $ditjaar_pos_kampfunctie;
     }
 
+    // Berekening ná toewijzing zodat de juiste kampkort gebruikt wordt
+    $ditjaar_kampkort_low = preg_replace('/[^\w-]/', '', strtolower(trim((string)($ditjaar_kampkort ?? ''))));
+    $ditjaar_kampkort_cap = preg_replace('/[^\w-]/', '', strtoupper(trim((string)($ditjaar_kampkort ?? ''))));
+
     if ($ditjaar_one_deel_kampkort OR $ditjaar_pos_deel_kampkort) {
-        $ditjaar_kamprol        = 'deelnemer';
+        $ditjaar_kamprol = 'deelnemer';
     }
     if ($ditjaar_one_leid_kampkort OR $ditjaar_pos_leid_kampkort) {
-        $ditjaar_kamprol        = 'leiding';
+        $ditjaar_kamprol = 'leiding';
     }
 
     wachthond($extdebug,3, 'ditjaar_one_kampfunctie',       $ditjaar_one_kampfunctie);
@@ -129,9 +134,10 @@ function werving_civicrm_activitymee($contactid, $mee_update, $displayname = NUL
     $mee_komendkamp     = $array_contditjaar['mee_komendkamp']  ?? NULL;
     $mee_verwachting    = $array_contditjaar['mee_verwachting'] ?? NULL;
     $mee_toelichting    = $array_contditjaar['mee_toelichting'] ?? NULL;
-    $mee_update         = $array_contditjaar['mee_update']      ?? NULL;
     $mee_update_year    = $array_contditjaar['mee_update_year'] ?? NULL;
     $mee_notities       = $array_contditjaar['mee_notities']    ?? NULL;
+    // $mee_update opzettelijk niet overschreven: de doorgegeven parameter is de nieuwe berekende
+    // waarde. De DB-waarde zou NULL kunnen zijn voor nieuwe contacten, waardoor CREATE nooit vuurt.
 
     wachthond($extdebug,1, "########################################################################");
     wachthond($extdebug,1, "### WERVING 3.1 MEE ACTIVITY - GET (cid: $contact_id)",      $displayname);
@@ -139,6 +145,8 @@ function werving_civicrm_activitymee($contactid, $mee_update, $displayname = NUL
 
     wachthond($extdebug,4, 'mee_update',            $mee_update);
     wachthond($extdebug,4, 'today_datetime_past',   $today_datetime_past);
+
+    $result_mee_get_count = 0;
 
     if (date_bigger($mee_update, $today_datetime_past) == 1) {
 
@@ -188,9 +196,10 @@ function werving_civicrm_activitymee($contactid, $mee_update, $displayname = NUL
 
       } else {
 
-        $mee_activity_id        = NULL;
-        $mee_activity_status    = NULL;
-        $mee_activity_datum     = NULL;
+        $mee_activity_id            = NULL;
+        $mee_activity_status        = NULL;
+        $mee_activity_datum         = NULL;
+        $mee_activity_displayname   = NULL;
         wachthond($extdebug,3, 'mee_activity_id',   "No Activity Found");
     }
 
@@ -301,13 +310,6 @@ function werving_civicrm_activitymee($contactid, $mee_update, $displayname = NUL
         }
 //      wachthond($extdebug,9, 'result_activity_mee_update',                $result_activity_mee_update);
 
-        wachthond($extdebug,3, 'ditevent_event_start',  $ditevent_event_start);
-        wachthond($extdebug,3, 'ditevent_event_einde',  $ditevent_event_einde);
-
-        wachthond($extdebug,3, 'mee_update_next_year',  $mee_update_next_year);
-        wachthond($extdebug,3, 'mee_event_past_date',   $mee_event_past_date);
-        wachthond($extdebug,3, 'mee_event_next_date',   $mee_event_next_date);
-        wachthond($extdebug,3, 'mee_event_next_year',   $mee_event_next_year);
     }
 
     wachthond($extdebug,1, "########################################################################");
