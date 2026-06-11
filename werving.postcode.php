@@ -227,7 +227,7 @@ function werving_civicrm_address_update($contactid, $adresid, $adres_array) {
     $adres_postcode         = $adres_array['adres_postcode'];
     $adres_street_name      = $adres_array['adres_street_name'];
     $adres_street_number    = $adres_array['adres_street_number'];
-    $adres_street_suffix    = $adres_array['adres_street_suffix'];
+    $adres_street_suffix    = $adres_array['adres_street_suffix']   ?? NULL;
 
     $adres_street_address = NULL;
     if ($adres_street_name AND $adres_street_number) {

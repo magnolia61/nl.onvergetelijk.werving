@@ -33,8 +33,18 @@ function werving_civicrm_enable(): void {
 
 function werving_civicrm_customPre(string $op, int $groupID, int $entityID, array &$params): void {
 
-    $extdebug   = 3;  //  1 = basic // 2 = verbose // 3 = params / 4 = results
-    $apidebug   = FALSE;
+    // RECURSIE STOP: voorkom dat deze functie zichzelf oneindig aanroept
+    static $isBusy = false;
+    if ($isBusy) return;
+    $isBusy = true;
+
+    $extdebug           = 0;  //  1 = basic // 2 = verbose // 3 = params / 4 = results
+    $apidebug           = FALSE;
+
+    $extwrite           = 1;
+    $extwerving         = 1;
+
+    $profilewerving     = array(270);
 
     if ($op != 'create' && $op != 'edit') { //    did we just create or edit a custom object?
         wachthond($extdebug,4, "########################################################################");
@@ -42,6 +52,13 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         wachthond($extdebug,4, "########################################################################");
         return; //  if not, get out of here
     }
+
+    // Initialiseer alle arrays om crashes te voorkomen
+    $all_leeftijd_decimalen = $all_leeftijd_rondjaren = $all_nextkamp_decimalen = 
+    $all_nextkamp_rondjaren = $all_nextkamp_rondmaand = $all_datum_belangstelling = 
+    $all_leeftijdsgroep = $all_kampweek = $all_kampweken = $all_mee_update = 
+    $all_mee_update_year = $all_mee_verwachting = $all_mee_toelichting = 
+    $all_mee_status = $all_mee_notities = $all_vakantieregio = [];
 
     ##########################################################################################
     ### RETURN IF ONLY VAKANTIEREGIO IS UPDATED
@@ -52,10 +69,6 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
     if ($arraysize == 1 AND $params[0]['column_name'] == 'vakantieregio_1949') {
         return;
     }
-
-    $extwrite               = 1;
-    $extwerving             = 1;
-    $profilewerving         = array(270);
 
     if (in_array($groupID, $profilewerving))  {
 
@@ -83,12 +96,12 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         wachthond($extdebug,1, "########################################################################");
 
         wachthond($extdebug,4, "entityid",          $entityID);
-        wachthond($extdebug,2, "params (size)",     $arraysize);
+        wachthond($extdebug,4, "params (size)",     $arraysize);
 
         if ($arraysize == 1) {
 
             wachthond($extdebug,1, "########################################################################");
-            wachthond($extdebug,1, "### WERVING [PRE] 1.1 params array to small > EXIT", "[params: $params]");
+            wachthond($extdebug,1, "### WERVING [PRE] 1.1 params array too small > EXIT", "[params: $params]");
             wachthond($extdebug,1, "########################################################################");
 
             wachthond($extdebug,1, "params",        $params);
@@ -96,7 +109,7 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
             return;
 
         } else {
-            wachthond($extdebug,3, "params",        $params);
+            wachthond($extdebug,4, "params",        $params);
         }
 
         foreach($params as $i=>$item) {
@@ -175,18 +188,18 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
 
         if ($key_leeftijd_decimalen >= 0) {
             $raw_leeftijd_decimalen           = $params[$key_leeftijd_decimalen]['value']   ?? NULL;
-            $new_leeftijd_decimalen           = $raw_leeftijd_decimalen;
-            wachthond($extdebug,2, "org_leeftijd_decimalen", $org_leeftijd_decimalen);
+            $val_leeftijd_decimalen           = $raw_leeftijd_decimalen;
+            wachthond($extdebug,2, "val_leeftijd_decimalen", $val_leeftijd_decimalen);
         }
 
         ##########################################################################################
         ### GET LEEFTIJD CURRENT [RONDJAREN]
         ##########################################################################################        
 
-        if ($key_leeftijd_decimalen >= 0) {
-            $raw_leeftijd_decimalen           = $params[$key_leeftijd_decimalen]['value']   ?? NULL;
-            $new_leeftijd_decimalen           = $raw_leeftijd_decimalen;
-            wachthond($extdebug,2, "org_leeftijd_decimalen", $org_leeftijd_decimalen);
+        if ($key_leeftijd_rondjaren >= 0) {
+            $raw_leeftijd_rondjaren         = $params[$key_leeftijd_rondjaren]['value'] ?? NULL;
+            $val_leeftijd_rondjaren         = $raw_leeftijd_rondjaren;
+            wachthond($extdebug, 2, "val_leeftijd_rondjaren", $val_leeftijd_rondjaren);
         }
 
         ##########################################################################################
@@ -194,9 +207,9 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         ##########################################################################################        
 
         if ($key_nextkamp_decimalen >= 0) {
-            $raw_nextkamp_decimalen           = $params[$key_nextkamp_decimalen]['value']   ?? NULL;
-            $new_nextkamp_decimalen           = $raw_nextkamp_decimalen;
-            wachthond($extdebug,2, "org_nextkamp_decimalen", $org_nextkamp_decimalen);
+            $raw_nextkamp_decimalen         = $params[$key_nextkamp_decimalen]['value']   ?? NULL;
+            $val_nextkamp_decimalen         = $raw_nextkamp_decimalen;
+            wachthond($extdebug,2, "val_nextkamp_decimalen", $val_nextkamp_decimalen);
         }
 
         ##########################################################################################
@@ -205,8 +218,8 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
 
         if ($key_nextkamp_rondjaren >= 0) {
             $raw_nextkamp_rondjaren           = $params[$key_nextkamp_rondjaren]['value']   ?? NULL;
-            $new_nextkamp_rondjaren           = $raw_nextkamp_rondjaren;
-            wachthond($extdebug,2, "org_nextkamp_rondjaren", $org_nextkamp_rondjaren);
+            $val_nextkamp_rondjaren           = $raw_nextkamp_rondjaren;
+            wachthond($extdebug,2, "val_nextkamp_rondjaren", $val_nextkamp_rondjaren);
         }
 
         ##########################################################################################
@@ -215,8 +228,8 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
 
         if ($key_nextkamp_rondmaand >= 0) {
             $raw_nextkamp_rondmaand           = $params[$key_nextkamp_rondmaand]['value']   ?? NULL;
-            $new_nextkamp_rondmaand           = $raw_nextkamp_rondmaand;
-            wachthond($extdebug,2, "org_nextkamp_rondmaand", $org_nextkamp_rondmaand);
+            $val_nextkamp_rondmaand           = $raw_nextkamp_rondmaand;
+            wachthond($extdebug,2, "val_nextkamp_rondmaand", $val_nextkamp_rondmaand);
         }
 
         ##########################################################################################
@@ -224,16 +237,34 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         ##########################################################################################        
 
         if ($key_datum_belangstelling >= 0) {
-            $pid_datum_belangstelling  = $params[$key_datum_belangstelling]['entity_id']    ?? NULL;
             $raw_datum_belangstelling  = $params[$key_datum_belangstelling]['value']        ?? NULL;
-            $new_datum_belangstelling  = strtotime($raw_datum_belangstelling);
-            $org_datum_belangstelling  = date("Y-m-d H:i:s", $new_datum_belangstelling);  
-            wachthond($extdebug,4, "key_datum_belangstelling", $key_datum_belangstelling);
-            wachthond($extdebug,4, "raw_datum_belangstelling", $raw_datum_belangstelling);
-            wachthond($extdebug,2, "org_datum_belangstelling", $org_datum_belangstelling);
-            wachthond($extdebug,4, "pid_datum_belangstelling", $pid_datum_belangstelling);
-            $datum_belangstelling       = $org_datum_belangstelling;
+            if (!empty($raw_datum_belangstelling)) {
+                $timestamp = strtotime($raw_datum_belangstelling);
+                $val_datum_belangstelling = ($timestamp) ? date("Y-m-d H:i:s", $timestamp) : NULL;
+            }            
+            wachthond($extdebug,2, "val_datum_belangstelling", $val_datum_belangstelling);
         }
+
+        // IF THE DATE IS TODAY THEN ADD THE TIME TO IT
+        $inputString    = $val_datum_belangstelling;
+        $inputTimestamp = strtotime($inputString);
+
+        if ($inputTimestamp === false) {
+            $output = $inputString; // Fout bij parsen
+        } else {
+            $datum      = date('Y-m-d', $inputTimestamp);
+            $tijd       = date('H:i:s', $inputTimestamp);
+            $vandaag    = date('Y-m-d');
+
+            if ($datum === $vandaag && $tijd === '00:00:00') {
+                // Vervang tijd door huidige tijd
+                $output = date('d-m-Y H:i:s'); // huidige datum + tijd
+            } else {
+                // Houd originele input
+                $output = date('Y-m-d H:i:s', $inputTimestamp);
+            }
+        }
+        $val_datum_belangstelling = $output;
 
         ##########################################################################################
         ### GET LEEFTIJDSGROEP
@@ -241,10 +272,9 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
 
         if ($key_leeftijdsgroep >= 0) {
             $raw_leeftijdsgroep     = $params[$key_leeftijdsgroep]['value']                 ?? NULL;
-            $new_leeftijdsgroep     = explode('', $raw_leeftijdsgroep);
-            $org_leeftijdsgroep     = $new_leeftijdsgroep;  
-            $belangstelling_groep   = $org_leeftijdsgroep;
-            wachthond($extdebug,2, "org_leeftijdsgroep", $org_leeftijdsgroep);
+            $val_leeftijdsgroep     = explode('', $raw_leeftijdsgroep ?? '');
+            $belangstelling_groep   = $val_leeftijdsgroep;
+            wachthond($extdebug,2, "val_leeftijdsgroep", $val_leeftijdsgroep);
         }
 
         ##########################################################################################
@@ -253,10 +283,9 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
 
         if ($key_kampweek >= 0) {
             $raw_kampweek           = $params[$key_kampweek]['value']                       ?? NULL;
-            $new_kampweek           = $raw_kampweek;
-            $org_kampweek           = $new_kampweek;
-            $belangstelling_week    = $org_kampweek;
-            wachthond($extdebug,2, "org_kampweek", $org_kampweek);
+            $val_kampweek           = $raw_kampweek;
+            $belangstelling_week    = $val_kampweek;
+            wachthond($extdebug,2, "val_kampweek", $val_kampweek);
         }
 
         ##########################################################################################
@@ -265,8 +294,9 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
 
         if ($key_kampweken >= 0) {
             $raw_kampweken          = $params[$key_kampweken]['value']                      ?? NULL;
+            $val_kampweken          = $raw_kampweken;
             $belangstelling_kamp    = $raw_kampweken;
-            wachthond($extdebug,2, "org_kampweken", $raw_kampweken);            
+            wachthond($extdebug,2, "val_kampweken", $val_kampweken);            
         }
 
         ##########################################################################################
@@ -274,12 +304,35 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         ##########################################################################################        
 
         if ($key_mee_update >= 0) {
-            $raw_mee_update             = $params[$key_mee_update]['value']                 ?? NULL;
-            $new_mee_update             = strtotime($raw_mee_update);
-            $org_mee_update             = date("Y-m-d H:i:s", $new_mee_update);  
-            $werving_mee_update         = $org_mee_update;
-            wachthond($extdebug,2, "org_mee_update", $org_mee_update);
+            $raw_mee_update         = $params[$key_mee_update]['value']                     ?? NULL;
+            if ($raw_mee_update) {
+                $val_mee_update     = date("Y-m-d H:i:s", strtotime($raw_mee_update)); 
+            } else {
+                $val_mee_update     = NULL; 
+            }
+            wachthond($extdebug,2, "val_mee_update", $val_mee_update);
         }
+
+        // IF THE DATE IS TODAY THEN ADD THE TIME TO IT
+        $inputString    = $val_mee_update;
+        $inputTimestamp = strtotime($inputString);
+
+        if ($inputTimestamp === false) {
+            $output = $inputString; // Fout bij parsen
+        } else {
+            $datum      = date('Y-m-d', $inputTimestamp);
+            $tijd       = date('H:i:s', $inputTimestamp);
+            $vandaag    = date('Y-m-d');
+
+            if ($datum === $vandaag && $tijd === '00:00:00') {
+                // Vervang tijd door huidige tijd
+                $output = date('d-m-Y H:i:s'); // huidige datum + tijd
+            } else {
+                // Houd originele input
+                $output = date('Y-m-d H:i:s', $inputTimestamp);
+            }
+        }
+        $val_mee_update = $output;
 
         ##########################################################################################
         ### GET MEE DATUM KOMEND KAMPJAAR 
@@ -287,10 +340,12 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
 
         if ($key_mee_update_year >= 0) {
             $raw_mee_update_year        = $params[$key_mee_update_year]['value']            ?? NULL;
-            $new_mee_update_year        = strtotime($raw_mee_update_year);
-            $org_mee_update_year        = date("Y-m-d H:i:s", $new_mee_update_year);  
-            $werving_mee_update_year    = $org_mee_update_year;
-            wachthond($extdebug,2, "org_mee_update_year", $org_mee_update_year);
+            if ($raw_mee_update_year) {
+                $val_mee_update_year    = date("Y-m-d H:i:s", strtotime($raw_mee_update_year)); 
+            } else {
+                $val_mee_update_year    = NULL; 
+            }
+            wachthond($extdebug,2, "val_mee_update_year", $val_mee_update_year);
         }
 
         ##########################################################################################
@@ -299,8 +354,9 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
 
         if ($key_mee_verwachting >= 0) {
             $raw_mee_verwachting        = $params[$key_mee_verwachting]['value']            ?? NULL;
-            $werving_mee_verwachting    = $raw_mee_verwachting;
-            wachthond($extdebug,2, "org_mee_verwachting", $raw_mee_verwachting);
+            $val_mee_verwachting        = $raw_mee_verwachting;
+            $mee_verwachting            = $val_mee_verwachting;
+            wachthond($extdebug,2, "val_mee_verwachting", $val_mee_verwachting);
         }
 
         ##########################################################################################
@@ -309,8 +365,9 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
 
         if ($key_mee_toelichting >= 0) {
             $raw_mee_toelichting        = $params[$key_mee_toelichting]['value']            ?? NULL;
-            $werving_mee_toelichting    = $raw_mee_toelichting;
-            wachthond($extdebug,2, "org_mee_toelichting", $raw_mee_toelichting);            
+            $val_mee_toelichting        = $raw_mee_toelichting;
+            $mee_toelichting            = $val_mee_toelichting;
+            wachthond($extdebug,2, "val_mee_toelichting", $val_mee_toelichting);
         }
 
         ##########################################################################################
@@ -318,9 +375,10 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         ##########################################################################################        
 
         if ($key_mee_status >= 0) {
-            $raw_mee_status         = $params[$key_mee_status]['value']                     ?? NULL;
-            $werving_mee_status     = $raw_mee_status;
-            wachthond($extdebug,2, "org_mee_status", $raw_mee_status);            
+            $raw_mee_status             = $params[$key_mee_status]['value']                 ?? NULL;
+            $val_mee_status             = $raw_mee_status;
+            $mee_status                 = $val_mee_status;
+            wachthond($extdebug,2, "val_mee_status", $val_mee_status);
         }                        
 
         ##########################################################################################
@@ -329,8 +387,9 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
 
         if ($key_mee_notities >= 0) {
             $raw_mee_notities       = $params[$key_mee_notities]['value']                   ?? NULL;
-            $werving_mee_notities   = $raw_mee_notities;
-            wachthond($extdebug,2, "org_mee_notities", $raw_mee_notities);
+            $val_mee_notities       = $raw_mee_notities;
+            $mee_notities           = $raw_mee_notities;
+            wachthond($extdebug,2, "val_mee_notities", $val_mee_notities);
         }                        
 
         ##########################################################################################
@@ -338,9 +397,10 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         ##########################################################################################        
 
         if ($key_vakantieregio >= 0) {
-            $raw_vakantieregio        = $params[$key_vakantieregio]['value']                ?? NULL;
-            $werving_vakantieregio    = $raw_vakantieregio;
-            wachthond($extdebug,2, "org_vakantieregio", $raw_vakantieregio);
+            $raw_vakantieregio      = $params[$key_vakantieregio]['value']                  ?? NULL;
+            $val_vakantieregio      = $raw_vakantieregio;
+            $werving_vakantieregio  = $val_vakantieregio;
+            wachthond($extdebug,2, "val_vakantieregio", $val_vakantieregio);
         }
 
         ##########################################################################################
@@ -351,7 +411,7 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
 
             $params_contact_get = [
                 'checkPermissions' => FALSE,
-                'debug'  => $apidebug,              
+                'debug'  => $apidebug,
                 'select' => [
                     'display_name',
                     'birth_date',
@@ -367,20 +427,19 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         wachthond($extdebug,9, 'result_contact_get',            $result_contact_get);
 
         if (isset($result_contact_get))    {
-            $display_name           = $result_contact_get[0]['display_name']            ?? NULL;
-            $birth_date             = $result_contact_get[0]['birth_date']              ?? NULL;
+            $displayname            = $result_contact_get[0]['display_name']            ?? NULL;
+            $birthdate              = $result_contact_get[0]['birth_date']              ?? NULL;
             $werving_vakantieregio  = $result_contact_get[0]['WERVING.vakantieregio']   ?? NULL;
 
-            wachthond($extdebug,1, 'display_name',              $display_name);
-            wachthond($extdebug,1, 'birth_date',                $birth_date);
-            wachthond($extdebug,2, 'werving_vakantieregio',     
-                $werving_vakantieregio);
+            wachthond($extdebug,1, 'display_name',              $displayname);
+            wachthond($extdebug,1, 'birthdate',                 $birthdate);
+            wachthond($extdebug,2, 'werving_vakantieregio',     $werving_vakantieregio);
         }
 
-        // M61: ALLEEN DEZE SECTIE INDIEN WAARDE KEY_MEE_STATUS AANWEZOIG IS
+        // M61: ALLEEN DEZE SECTIE INDIEN WAARDE KEY_MEE_STATUS AANWEZIG IS
         // M61: IN SOMMIGE GEVALLEN BEVAT PARAMS ALLEEN WAARDEN MBT LEEFTIJD
 
-        if ($org_datum_belangstelling AND $params[$key_mee_status]['value'] AND $belangstelling_week) {
+        if ($val_datum_belangstelling AND $params[$key_mee_status]['value'] AND $belangstelling_week) {
 
             wachthond($extdebug,2, "########################################################################");
             wachthond($extdebug,1, "### WERVING [PRE] 1.2 BEPAAL WAARDE KAMPWEKEN BELANGSTELLING");
@@ -418,31 +477,37 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
 
             wachthond($extdebug,2, 'belangstelling_array',          $belangstelling_array);
             if (!empty($belangstelling_array)) {
-                $belangstelling_string = implode('',          $belangstelling_array);
+                $belangstelling_string = (string) implode('', $belangstelling_array);
+//              $belangstelling_string = implode(CRM_Core_DAO::FIELD_SEPARATOR, $belangstelling_array);
+                $belangstelling_string = (string) $belangstelling_string;
                 wachthond($extdebug,2, 'belangstelling_string',     $belangstelling_string);
             }
 
             wachthond($extdebug,2, 'key_kampweken',                 $key_kampweken);
             if (is_numeric($key_kampweken) AND !empty($belangstelling_array)) {
-                wachthond($extdebug,3, "ORG params[kampweken]",     $params[$key_kampweken]);
-                $params[$key_kampweken]['value'] =                  $belangstelling_string;
-                wachthond($extdebug,3, "NEW params[kampweken]",     $params[$key_kampweken]);
+                wachthond($extdebug,3, "ORG params[kampweken]",          $params[$key_kampweken]);
+                if ($extwrite == 1) { $params[$key_kampweken]['value'] = $belangstelling_string; }
+                wachthond($extdebug,3, "NEW params[kampweken]",          $params[$key_kampweken]);
             }
-
         }
 
-        if (date_biggerequal($datum_belangstelling, $werving_mee_update, 'belang', 'meeupdate') == 1 OR empty($werving_mee_update)) {
+        if ($val_datum_belangstelling) {
+            werving_civicrm_acl($contact_id, $val_datum_belangstelling);
+        }
+
+        if (date_biggerequal($val_datum_belangstelling, $val_mee_update) == 1 OR empty($val_mee_update)) {
 
             wachthond($extdebug,2, "########################################################################");
             wachthond($extdebug,1, "### WERVING [PRE] 1.3 VUL VELDEN 'MEE DIT JAAR' OBV DATUM BELANGSTELLING");
             wachthond($extdebug,2, "########################################################################");
 
-            $new_werving_mee_update = $datum_belangstelling;
-            wachthond($extdebug,2, 'trek datum werving mee update gelijk met datum belangstelling',     $datum_belangstelling);
-
+            $new_mee_update = $val_datum_belangstelling;
+            wachthond($extdebug,2, 'trek datum werving mee update gelijk met datum belangstelling',
+                                    $val_datum_belangstelling);
         } else {
 
-            $new_werving_mee_update = $werving_mee_update;
+            $new_mee_update = $val_mee_update;
+            wachthond($extdebug,2, 'val_mee_update',            $val_mee_update);
 
         }
 
@@ -450,27 +515,28 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         wachthond($extdebug,1, "### WERVING [PRE] 1.4 BEPAAL LAST & NEXT EVENT DATES");
         wachthond($extdebug,2, "########################################################################");
 
-        wachthond($extdebug,4, 'new_werving_mee_update',                    $new_werving_mee_update);
-        $new_werving_mee_update_lastnext = find_lastnext($new_werving_mee_update);
-        wachthond($extdebug,3, 'new_werving_mee_update_lastnext',           $new_werving_mee_update_lastnext);
+        wachthond($extdebug,4, 'new_mee_update',                    $new_mee_update);
+        $new_mee_update_lastnext = find_lastnext($new_mee_update);
+        wachthond($extdebug,3, 'new_mee_update_lastnext',           $new_mee_update_lastnext);
 
-        $new_werving_mee_update_last_einde_date =   $new_werving_mee_update_lastnext['last_einde_date'];
-        wachthond($extdebug,3, 'new_werving_mee_update_last_einde_date',    $new_werving_mee_update_last_einde_date);
+        $new_mee_update_last_einde_date =   $new_mee_update_lastnext['last_einde_date'];
+        wachthond($extdebug,3, 'new_mee_update_last_einde_date',    $new_mee_update_last_einde_date);
 
-        $new_werving_mee_update_next_start_date =   $new_werving_mee_update_lastnext['next_start_date'];
-        wachthond($extdebug,3, 'new_werving_mee_update_next_start_date',    $new_werving_mee_update_next_start_date);
+        $new_mee_update_next_start_date =   $new_mee_update_lastnext['next_start_date'];
+        wachthond($extdebug,3, 'new_mee_update_next_start_date',    $new_mee_update_next_start_date);
 
         ##########################################################################################
         ### SET DEFAULT VALUE FOR NEW_WERVING_MEE_UPDATE & BEPAAL FISCAL YEAR START & EINDE
         ##########################################################################################        
 
-        $mee_fiscalyear                 = curriculum_civicrm_fiscalyear($new_werving_mee_update);
+        $mee_fiscalyear                 = curriculum_civicrm_fiscalyear($new_mee_update);
         $mee_fiscalyear_start           = $mee_fiscalyear['fiscalyear_start'] ?? NULL;
         $mee_fiscalyear_einde           = $mee_fiscalyear['fiscalyear_einde'] ?? NULL;
 
-        $new_werving_mee_update_year    = date('Y', strtotime($new_werving_mee_update));
-        wachthond($extdebug,4, 'new_werving_mee_update_year', $new_werving_mee_update_year);
-
+        if ($new_mee_update) {
+            $new_mee_update_year    = date('Y', strtotime($new_mee_update));
+            wachthond($extdebug,3, 'new_mee_update_year', $new_mee_update_year);
+        }
         wachthond($extdebug,2, "########################################################################");
         wachthond($extdebug,1, "### WERVING [PRE] 1.4 b BEPAAL LAATSTE KAMPDATUM OBV ZEKERE DATUMS ");
         wachthond($extdebug,2, "########################################################################");
@@ -479,29 +545,22 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         ### BEPAAL DATUMS ZEKER VOOR KAMP EN ZEKER NA KAMP OM TE BEOORDELEN OM WELK KAMPJAAR HET GAAT
         ##########################################################################################        
 
-        $datumzekervoorkamp_datetime= new DateTime($new_werving_mee_update_year.'-07-18 16:00:00');
-        wachthond($extdebug,3, 'datumzekervoorkamp_datetime',       $datumzekervoorkamp_datetime);
-        $datumzekervoorkamp_string  = $datumzekervoorkamp_datetime->format('Y-m-d H:i:s');
-        wachthond($extdebug,3, 'datumzekervoorkamp_string',         $datumzekervoorkamp_string);
+        // Gebruik @ om DateTime errors te onderdrukken als year leeg is, of check eerst
+        $new_mee_update_nextyear = NULL; 
+        
+        if (!empty($new_mee_update_year)) {
+            $datumzekervoorkamp_string = $new_mee_update_year . '-07-18 16:00:00';
+            $datumzekernakamp_string   = $new_mee_update_year . '-08-07 16:00:00';
 
-        $datumzekernakamp_datetime  = new DateTime($new_werving_mee_update_year.'-08-07 16:00:00');
-        wachthond($extdebug,3, 'datumzekernakamp_datetime',         $datumzekernakamp_datetime);
-        $datumzekernakamp_string    = $datumzekernakamp_datetime->format('Y-m-d H:i:s');
-        wachthond($extdebug,3, 'datumzekernakamp_string',           $datumzekernakamp_string);
-
-        if (date_biggerequal($new_werving_mee_update, $datumzekernakamp_string, 'new_werving_mee_update', 'datumzekernakamp') == 1) {
-            $new_werving_mee_update_nextyear  = date('Y', strtotime('+1 year', strtotime($werving_mee_update)) );        
-            wachthond($extdebug,2, "OP BASIS VAN DATA ZEKER NA KAMP $datumzekernakamp_string", "nextyear +1: $werving_mee_update_nextyear" );
-        }
-        if (date_biggerequal($datumzekervoorkamp_string, $new_werving_mee_update, 'datumzekervoorkamp', 'new_werving_mee_update') == 1) {
-            $new_werving_mee_update_nextyear  = date('Y', strtotime('+0 year', strtotime($new_werving_mee_update)) );
-            wachthond($extdebug,2, "OP BASIS VAN DATA ZEKER VOOR KAMP $datumzekernakamp_string", "nextyear +0: $new_werving_mee_update_nextyear" );
-        }
-        if (empty($new_werving_mee_update_nextyear)) {
-            wachthond($extdebug,2, "OBV LAATSTE KAMPREGISTRATIE GEEN RESULTAAT GEVONDEN" );
+            if (date_biggerequal($new_mee_update, $datumzekernakamp_string) == 1) {
+                // FIX: Gebruik $new_mee_update ipv $mee_update
+                $new_mee_update_nextyear = date('Y', strtotime('+1 year', strtotime($new_mee_update)));        
+            } elseif (date_biggerequal($datumzekervoorkamp_string, $new_mee_update) == 1) {
+                $new_mee_update_nextyear = $new_mee_update_year;
+            }
         }
 
-        wachthond($extdebug,3, 'new_werving_mee_update_nextyear',       $new_werving_mee_update_nextyear);
+        wachthond($extdebug,3, 'new_mee_update_nextyear',       $new_mee_update_nextyear);
 
         wachthond($extdebug,2, "########################################################################");
         wachthond($extdebug,1, "### WERVING [PRE] 1.4 c BEPAAL LAATSTE KAMPDATUM OBV LAATSTE REGISTRATIE");
@@ -511,57 +570,46 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         ### M61 TODO: DATUM NEXT IS NU DE VOLGENDE REGISTRATIE. INDIEN DIE ER NIET IS DAN ZOEK OP EVENT
         ##########################################################################################        
 
-        if (empty($new_werving_mee_update_nextyear)) {  // ALLEEN MET EXTRA QUERIES INDIEN OBV DATUM ZEKER NA NIET LUKT
+        if (empty($new_mee_update_nextyear)) {  // ALLEEN MET EXTRA QUERIES INDIEN OBV DATUM ZEKER NA NIET LUKT
 
-            $participant_lastnext = find_lastnext_part($contact_id, $new_werving_mee_update);
+            $participant_lastnext = find_lastnext_part($contact_id, $new_mee_update);
 
             wachthond($extdebug,2, 'participant_lastnext',          $participant_lastnext);
 
             $participant_last_einde_date =   $participant_lastnext['last_einde_date'];
             wachthond($extdebug,3, 'participant_last_einde_date',   $participant_last_einde_date);
 
-            if (date_biggerequal($new_werving_mee_update, $participant_last_einde_date, 'new_werving_mee_update', 'participant_last_einde_date') == 1) {
-                $new_werving_mee_update_nextyear  = date('Y', strtotime('+1 year', strtotime($new_werving_mee_update)) );        
-                wachthond($extdebug,2, "OBV LAATSTE KAMPREGISTRATIE $participant_last_einde_date", "nextyear +1: $new_werving_mee_update_nextyear" );
+            if (date_biggerequal($new_mee_update, $participant_last_einde_date, 'new_mee_update', 'participant_last_einde_date') == 1) {
+                $new_mee_update_nextyear  = date('Y', strtotime('+1 year', strtotime($new_mee_update)) );        
+                wachthond($extdebug,2, "OBV LAATSTE KAMPREGISTRATIE $participant_last_einde_date", "nextyear +1: $new_mee_update_nextyear" );
             }
-            if (date_biggerequal($participant_last_einde_date, $new_werving_mee_update, 'participant_last_einde_date', 'new_werving_mee_update') == 1) {
-                $new_werving_mee_update_nextyear  = date('Y', strtotime('+0 year', strtotime($new_werving_mee_update)) );
-                wachthond($extdebug,2, "OBV LAATSTE KAMPREGISTRATIE $participant_next_einde_date", "nextyear +0: $new_werving_mee_update_nextyear" );
+            if (date_biggerequal($participant_last_einde_date, $new_mee_update, 'participant_last_einde_date', 'new_mee_update') == 1) {
+                $new_mee_update_nextyear  = date('Y', strtotime('+0 year', strtotime($new_mee_update)) );
+                wachthond($extdebug,2, "OBV LAATSTE KAMPREGISTRATIE $participant_next_einde_date", "nextyear +0: $new_mee_update_nextyear" );
             }
 
         } else {
-                wachthond($extdebug,2, "NIET NODIG - WAARDEN AL GEVONDEN VIA DATUM ZEKER NA KAMP", $new_werving_mee_update_nextyear);
+                wachthond($extdebug,2, "NIET NODIG - WAARDEN AL GEVONDEN VIA DATUM ZEKER NA KAMP", $new_mee_update_nextyear);
         }
 
-        wachthond($extdebug,3, 'new_werving_mee_update_nextyear',       $new_werving_mee_update_nextyear);
+        wachthond($extdebug,3, 'new_mee_update_nextyear',       $new_mee_update_nextyear);
 
         wachthond($extdebug,2, "########################################################################");
         wachthond($extdebug,1, "### WERVING [PRE] 1.5 a UPDATE PARAMS MET MEE UPDATE DATUM IGV BELANGSTELLING");
         wachthond($extdebug,2, "########################################################################");
 
-        if (is_numeric($key_mee_update) AND !empty($new_werving_mee_update)) {
+        if (is_numeric($key_mee_update) AND !empty($new_mee_update)) {
 
             // M61 converteer de datum naar een manier die weg te schrijven is in params
-            $new_werving_mee_update_datetime  = new DateTime($new_werving_mee_update);
-            wachthond($extdebug,3, 'new_werving_mee_update_datetime',   $new_werving_mee_update_datetime);
-            $new_werving_mee_update_string    = $new_werving_mee_update_datetime->format('Y-m-d H:i:s');
-            wachthond($extdebug,3, 'new_werving_mee_update_string',     $new_werving_mee_update_string);
-            $new_werving_mee_update_dbstring  = date("YmdHis", strtotime($new_werving_mee_update_string));
-            wachthond($extdebug,2, 'new_werving_mee_update_dbstring',   $new_werving_mee_update_dbstring);
-
-            ##########################################################################################
-            ### M61 : ALS CORRECTIE VOOR ALLE FOUTIEVE WAARDEN 1970
-            ##########################################################################################        
-
-            wachthond($extdebug,2, 'today_datetime_past',   $today_datetime_past);
-            wachthond($extdebug,2, 'org_mee_update',        $org_mee_update);
-
-            if (date_biggerequal($today_datetime_past, $org_mee_update, 'today_datetime_past', 'org_mee_update') == 1) {
-                $new_werving_mee_update_dbstring  = NULL;
-            }
+            $new_mee_update_datetime  = new DateTime($new_mee_update);
+            wachthond($extdebug,3, 'new_mee_update_datetime',   $new_mee_update_datetime);
+            $new_mee_update_string    = $new_mee_update_datetime->format('Y-m-d H:i:s');
+            wachthond($extdebug,3, 'new_mee_update_string',     $new_mee_update_string);
+            $new_mee_update_dbstring  = date("YmdHis", strtotime($new_mee_update_string));
+            wachthond($extdebug,2, 'new_mee_update_dbstring',   $new_mee_update_dbstring);
 
             wachthond($extdebug,3, 'OLD params[key_mee_update]',        $params[$key_mee_update]);
-            $params[$key_mee_update]['value'] =                         $new_werving_mee_update_dbstring;
+            if ($extwrite == 1) { $params[$key_mee_update]['value'] =   $new_mee_update_dbstring; }
             wachthond($extdebug,3, 'NEW params[key_mee_update]',        $params[$key_mee_update]);
         }
 
@@ -569,48 +617,66 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         wachthond($extdebug,1, "### WERVING [PRE] 1.5 b UPDATE PARAMS MET JAAR NEXT KAMP TOV MEE_UPDATE");
         wachthond($extdebug,2, "########################################################################");
 
-        // M61 converteer de datum naar een manier die weg te schrijven is in params
-        $new_datum_komendkamp_datetime  = new DateTime($new_werving_mee_update_nextyear.'-08-01 16:00:00');
-        wachthond($extdebug,3, 'new_datum_komendkamp_datetime',     $new_datum_komendkamp_datetime);
-        $new_datum_komendkamp_string    = $new_datum_komendkamp_datetime->format('Y-m-d H:i:s');
-        wachthond($extdebug,3, 'new_datum_komendkamp_string',       $new_datum_komendkamp_string);
-        $new_datum_komendkamp_dbstring  = date("YmdHis", strtotime($new_datum_komendkamp_string));
-        wachthond($extdebug,2, 'new_datum_komendkamp_dbstring',     $new_datum_komendkamp_dbstring);
+        $new_datum_komendkamp_dbstring = NULL;
+
+        // FIX: Alleen berekenen als we een jaar hebben gevonden
+        if (!empty($new_mee_update_nextyear) && $new_mee_update_nextyear > 1970) {
+            $datum_komendkamp_string = $new_mee_update_nextyear . '-08-01 16:00:00';
+            $new_datum_komendkamp_dbstring = date("YmdHis", strtotime($datum_komendkamp_string));
+            
+            wachthond($extdebug,3, 'datum_komendkamp_string', $datum_komendkamp_string);
+        }
+
+        wachthond($extdebug,2, "########################################################################");
+        wachthond($extdebug,1, "### WERVING [PRE] 1.5 c CORRECTIE IGV WAARDE 1970");
+        wachthond($extdebug,2, "########################################################################");
+
+        // FIX: Vergelijk string met string, niet met object
+        if (!empty($datum_komendkamp_string)) {
+            if (date_bigger($today_datetime_past, $datum_komendkamp_string) == 1) {
+                $new_datum_komendkamp_dbstring = NULL;
+                wachthond($extdebug, 1, "CORRECTIE: Datum ligt te ver in verleden, op NULL gezet.");
+            }
+        }
+
+        wachthond($extdebug,2, "########################################################################");
+        wachthond($extdebug,1, "### WERVING [PRE] 1.5 d WRITE MEE_UPDATE_YEAR TO DB");
+        wachthond($extdebug,2, "########################################################################");
 
         if (is_numeric($key_mee_update_year) AND !empty($new_datum_komendkamp_dbstring)) {
 
-            ##########################################################################################
-            ### M61 : ALS CORRECTIE VOOR ALLE FOUTIEVE WAARDEN 1970
-            ##########################################################################################        
-
-            wachthond($extdebug,2, 'today_datetime_past',   $today_datetime_past);
-            wachthond($extdebug,2, 'org_mee_update_year',   $org_mee_update_year);
-
-            if (date_biggerequal($today_datetime_past, $org_mee_update_year, 'today_datetime_past', 'org_mee_update_year') == 1) {
-                $new_datum_komendkamp_dbstring  = NULL;
-            }
-
-            wachthond($extdebug,3, 'OLD params[key_mee_update_year]',   $params[$key_mee_update_year]);
-            $params[$key_mee_update_year]['value'] =                    $new_datum_komendkamp_dbstring;
-            wachthond($extdebug,3, 'NEW params[key_mee_update_year]',   $params[$key_mee_update_year]);
+            wachthond($extdebug,3, 'OLD params[key_mee_update_year]',      $params[$key_mee_update_year]);
+            if ($extwrite == 1) { $params[$key_mee_update_year]['value'] = $new_datum_komendkamp_dbstring; }
+            wachthond($extdebug,3, 'NEW params[key_mee_update_year]',      $params[$key_mee_update_year]);
         }
 
-        // INDIEN BELANGSTELLING NA START AFGELOPEN KAMP DAN MEE VERWACHTING KOMEND JAAR MISSCHIEN
-        if (date_biggerequal($datum_belangstelling, $last_event_einde_date, 'belang', 'lastyear') == 1 AND $laatstekeer != $last_event_einde_year) {
+        wachthond($extdebug,2, "########################################################################");
+        wachthond($extdebug,1, "### WERVING [PRE] 1.5 e MEE MISSCHIEN IGV BELANGSTELLING");
+        wachthond($extdebug,2, "########################################################################");
 
-            if (in_array($werving_mee_verwachting, array('zekerniet','waarschijnlijkniet','weetnogniet')) OR empty($werving_mee_verwachting)) {
+        wachthond($extdebug,2, 'val_datum_belangstelling',          $val_datum_belangstelling);
 
-                wachthond($extdebug,2, 'werving_mee_verwachting',       $werving_mee_verwachting);
-                $new_werving_mee_verwachting                = "misschien";
-                wachthond($extdebug,2,'werving_mee_verwachting',        $new_werving_mee_verwachting);
+        $today_nextkamp_lastnext    = find_lastnext($today_datetime); 
+        $today_lastkamp_einde_date  = $today_nextkamp_lastnext['last_einde_date'];
+        wachthond($extdebug,3, 'today_lastkamp_einde_date',         $today_lastkamp_einde_date);
+
+        if (date_biggerequal($val_datum_belangstelling, $today_lastkamp_einde_date, 'belang', 'lastyear') == 1) {
+
+            if (in_array($mee_verwachting, array('zekerniet','waarschijnlijkniet','weetnogniet')) OR empty($mee_verwachting)) {
+
+                wachthond($extdebug,2, 'mee_verwachting',           $mee_verwachting);
+                $new_mee_verwachting  = "misschien";
+                wachthond($extdebug,2,'mee_verwachting',            $new_mee_verwachting);
+
+                $new_mee_verwachting = (string) $new_mee_verwachting;
 
                 wachthond($extdebug,3, 'OLD params[key_mee_verwachting][value]', $params[$key_mee_verwachting]);
                 if (is_numeric($key_mee_verwachting)) {
-                    $params[$key_mee_verwachting]['value']  =           $new_werving_mee_verwachting;
+                    if ($extwrite == 1) { $params[$key_mee_verwachting]['value']  = $new_mee_verwachting; }
                 }
                 wachthond($extdebug,3, 'NEW params[key_mee_verwachting][value]', $params[$key_mee_verwachting]);
 
-                wachthond($extdebug,2,"ZET VERWACHTING OP 'MISSCHIEN' ($new_werving_mee_verwachting) IVM BELANGSTELLING DIT JAAR",$datum_belangstelling);
+                wachthond($extdebug,2,"ZET VERWACHTING OP $new_mee_verwachting IVM BELANGSTELLING DIT JAAR",$val_datum_belangstelling);
             }
         }        
 
@@ -619,42 +685,44 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         wachthond($extdebug,2, "########################################################################");
 
 // M61: waarde mee status kan beste handmatig blijven omdat iemand nee ingevuld kan hebben maar mondeling het toch ja wordt (of andersom)
-//      if ($new_werving_mee_verwachting == 'zekerniet') {
-//          $new_werving_mee_status             = 'nietmee';
+//      if ($new_mee_verwachting == 'zekerniet') {
+//          $new_mee_status             = 'nietmee';
 //      }
 
         ##########################################################################################
         ### M61 : ALS CORRECTIE VOOR ALLE FOUTIEVE WAARDEN ONBEKEND BIJ LEGE DATUM BELANGSTELLING
         ##########################################################################################        
 
-        wachthond($extdebug,3, 'datum_belangstelling', $datum_belangstelling);
+        wachthond($extdebug,3, 'datum_belangstelling', $val_datum_belangstelling);
 
-        if (date_biggerequal($today_datetime_past, $datum_belangstelling, 'today_datetime_past', 'datum_belangstelling') == 1) {
-            $new_werving_mee_status     = ""; 
+        if (date_biggerequal($today_datetime_past, $val_datum_belangstelling, 'today_datetime_past', 'datum_belangstelling') == 1) {
+            $new_mee_status     = ""; 
             wachthond($extdebug,3, 'datum belangstelling is leeg, maak daarom status mee ook leeg');
 
             if (is_numeric($key_mee_status)) {
                 wachthond($extdebug,3, 'OLD params[key_mee_status][value]', $params[$key_mee_status]);
-                $params[$key_mee_status]['value']   = $new_werving_mee_status;
+                if ($extwrite == 1) { $params[$key_mee_status]['value']   = $new_mee_status; }
                 wachthond($extdebug,3, 'NEW params[key_mee_status][value]', $params[$key_mee_status]);
             }
         }
 
         ##########################################################################################
 
-        if (empty($datum_belangstelling)) {
-            $new_werving_mee_status     = ""; 
+        if (empty($val_datum_belangstelling)) {
+            $new_mee_status     = ""; 
         }
-        if (empty($raw_mee_status) AND !empty($datum_belangstelling)) {
-            $new_werving_mee_status     = 'onbekend'; 
+        if (empty($raw_mee_status) AND !empty($val_datum_belangstelling)) {
+            $new_mee_status     = 'onbekend'; 
         }
+
+        $new_mee_status = (string) $new_mee_status;
 
         wachthond($extdebug,2, 'key_mee_status', $key_mee_status);
 
         if (empty($raw_mee_status)) {   // M61: Vul alleen in indien leeg
             if (is_numeric($key_mee_status)) {
                 wachthond($extdebug,3, 'OLD params[key_mee_status][value]', $params[$key_mee_status]);
-                $params[$key_mee_status]['value']   = $new_werving_mee_status;
+                if ($extwrite == 1) { $params[$key_mee_status]['value']   = $new_mee_status; }
                 wachthond($extdebug,3, 'NEW params[key_mee_status][value]', $params[$key_mee_status]);
             }
         } else {
@@ -663,188 +731,21 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
             wachthond($extdebug,3, 'NEW params[key_mee_status][value]', $params[$key_mee_status]);
         }
 
-        wachthond($extdebug,1, "########################################################################");
-        wachthond($extdebug,1, "### WERVING 3.1 MEE ACTIVITY - GET (cid: $contact_id)", "[groupID: $groupID] [op: $op]");
-        wachthond($extdebug,1, "########################################################################");
-
-        wachthond($extdebug,4, 'new_werving_mee_update',        $new_werving_mee_update);
-        wachthond($extdebug,4, 'today_datetime_past',           $today_datetime_past);
-
-        if (date_bigger($new_werving_mee_update, $today_datetime_past) == 1) {
-
-            $params_activity_mee_get = [
-                'checkPermissions' => FALSE,
-                'debug' => $apidebug,
-                'select' => [
-                    'row_count', 'id', 'activity_date_time', 'status_id', 'status_id:name', 'subject', 'activity_contact.contact_id',
-                ],
-                'join' => [
-                    ['ActivityContact AS activity_contact', 'INNER'],
-                ],
-                'where' => [
-                    ['activity_contact.contact_id',       '=', $contact_id],
-                    ['activity_contact.record_type_id',   '=', 3],
-                    ['activity_type_id:name',             '=', 'werving_mee_ditjaar'],
-                    ['activity_date_time',                '>=', $mee_fiscalyear_start],
-                    ['activity_date_time',                '<=', $mee_fiscalyear_einde],
-                ],
-                'limit' => 1,
-            ];
-
-//          wachthond($extdebug,7, 'params_activity_mee_get',       $params_activity_mee_get);
-            $result_mee_get       = civicrm_api4('Activity','get',  $params_activity_mee_get);
-            $result_mee_get_count = $result_mee_get->countMatched();
-//          wachthond($extdebug,9, 'result_activity_mee_get ',      $result_mee_get);   
-            wachthond($extdebug,3, 'result_mee_count',              $result_mee_get_count);
-        }
-
-        if ($new_werving_mee_update AND $result_mee_get_count AND $result_mee_get_count == 1) {
-
-            $mee_activity_id            = $result_mee_get[0]['id']                  ?? NULL;
-            $mee_activity_status_id     = $result_mee_get[0]['status_id']           ?? NULL;
-            $mee_activity_status_name   = $result_mee_get[0]['status_id:name']      ?? NULL;
-            $mee_activity_datum         = $result_mee_get[0]['activity_date_time']  ?? NULL;
-
-            wachthond($extdebug,2, 'mee_activity_id',           $mee_activity_id);
-            wachthond($extdebug,2, 'mee_activity_status_id',    $mee_activity_status_id);
-            wachthond($extdebug,2, 'mee_activity_status_name',  $mee_activity_status_name);
-            wachthond($extdebug,2, 'mee_activity_datum',        $mee_activity_datum);
-
-          } else {
-
-            $mee_activity_id        = NULL;
-            $mee_activity_status    = NULL;
-            $mee_activity_datum     = NULL;
-            wachthond($extdebug,3, 'mee_activity_id',   "No Activity Found");
-        }
-
-        if (date_bigger($new_werving_mee_update, $today_datetime_past) == 1 AND $result_mee_get_count == 0 AND $werving_mee_update_nextyear > 2000) {
-
-            wachthond($extdebug,2, "########################################################################");
-            wachthond($extdebug,1, "### WERVING 3.2 MEE ACTIVITY - CREATE (cid: $contact_id)", "[groupID: $groupID] [op: $op]");
-            wachthond($extdebug,2, "########################################################################");
-
-            wachthond($extdebug,1, "########################################################################");
-            wachthond($extdebug,1, "CREATE werving_mee_verwachting",  "$werving_mee_verwachting");
-            wachthond($extdebug,1, "CREATE werving_mee_toelichting",  "$werving_mee_toelichting");
-            wachthond($extdebug,1, "########################################################################");
-
-            $params_activity_mee_create = [
-                'checkPermissions' => FALSE,
-                'debug' => $apidebug,
-                'values' => [
-                    'source_contact_id'         => $contact_id,
-                    'target_contact_id'         => $contact_id,
-                    'activity_type_id:name'     => 'werving_mee_ditjaar',
-                    'activity_date_time'        => $new_werving_mee_update,     
-                    'subject'                   => 'Mee in '. $werving_mee_update_nextyear.' : '.$werving_mee_verwachting,
-                    'status_id:name'            => 'Completed',
-                    'ACT_MEE.kampjaar'          => $werving_mee_update_nextyear,
-//                  'ACT_MEE.komendkamp'        => $next_event_start_date,
-                    'ACT_MEE.rol'               => $werving_mee_rol,
-                    'ACT_MEE.verwachting'       => $werving_mee_verwachting, 
-                    'ACT_MEE.toelichting'       => $werving_mee_toelichting, 
-                    'ACT_MEE.update'            => $new_werving_mee_update,
-
-                    'ACT_ALG.actcontact_naam'   => $displayname,
-                    'ACT_ALG.actcontact_cid'    => $contact_id,
-
-                    'ACT_ALG.kampnaam'          => $ditevent_event_kampkort_cap,
-                    'ACT_ALG.kampkort'          => $ditevent_event_kampkort_low,
-                    'ACT_ALG.kampfunctie'       => $ditevent_part_functie,
-                    'ACT_ALG.kamprol'           => $ditevent_part_rol,        
-                    'ACT_ALG.kampstart'         => $eventkamp_event_start,
-                    'ACT_ALG.kampeinde'         => $eventkamp_event_einde,
-                    'ACT_ALG.kampjaar'          => $ditevent_kampjaar,
-                    'ACT_ALG.modified'          => $today_datetime,
-                    'ACT_ALG.prioriteit:label'  => 'Normaal',
-                ],
-            ];
-            wachthond($extdebug,7, 'params_activity_mee_create',                $params_activity_mee_create);
-            if ($extwrite == 1 AND $contact_id) {
-                $result_activity_mee_create = civicrm_api4('Activity','create', $params_activity_mee_create);
-//              wachthond($extdebug,9, 'result_activity_mee_create',            $result_activity_mee_create);
-            }
-        }        
-
-        if (date_bigger($new_werving_mee_update, $today_datetime_past) == 1 AND $result_mee_get_count == 1) {
-
-            wachthond($extdebug,2, "########################################################################");
-            wachthond($extdebug,1, "### WERVING 3.3 MEE ACTIVITY - UPDATE (cid: $contact_id)", "[groupID: $groupID] [op: $op]");
-            wachthond($extdebug,2, "########################################################################");
-
-            wachthond($extdebug,2, 'mee_activity_id',           $mee_activity_id);
-            wachthond($extdebug,2, 'mee_activity_status_id',    $mee_activity_status_id);
-            wachthond($extdebug,2, 'mee_activity_status_name',  $mee_activity_status_name);
-            wachthond($extdebug,2, 'mee_activity_datum',        $mee_activity_datum);
-
-            wachthond($extdebug,1, "mee_verwachting",           $werving_mee_verwachting);
-            wachthond($extdebug,1, "mee_toelichting",           $werving_mee_toelichting);
-            wachthond($extdebug,3, "########################################################################");
-
-            $params_activity_mee_update = [
-                'checkPermissions' => FALSE,
-                'debug' => $apidebug,
-                'where' => [
-                    ['id',             '=', $mee_activity_id],
-                ],        
-                'values' => [
-                    'source_contact_id'       => $contact_id,
-                    'target_contact_id'       => $contact_id,
-                    'activity_type_id:name'   => 'werving_mee_ditjaar',
-                    'activity_date_time'      => $new_werving_mee_update,
-                    'subject'                 => 'Mee in '. $werving_mee_update_nextyear.' : '.$werving_mee_verwachting,
-                    'status_id:name'          => 'Completed',
-                    'ACT_MEE.kampjaar'        => $werving_mee_update_nextyear,
-                    'ACT_MEE.komendkamp'      => $new_datum_komendkamp_string,
-                    'ACT_MEE.rol'             => $werving_mee_rol,
-                    'ACT_MEE.verwachting'     => $werving_mee_verwachting,
-                    'ACT_MEE.toelichting'     => $werving_mee_toelichting,
-                    'ACT_MEE.update'          => $new_werving_mee_update,
-
-                    'ACT_ALG.actcontact_naam' => $displayname,
-                    'ACT_ALG.actcontact_cid'  => $contact_id,
-
-                    'ACT_ALG.kampnaam'        => $ditevent_event_kampkort_cap,
-                    'ACT_ALG.kampkort'        => $ditevent_event_kampkort_low,
-                    'ACT_ALG.kampfunctie'     => $ditevent_part_functie,
-                    'ACT_ALG.kamprol'         => $ditevent_part_rol,
-                    'ACT_ALG.kampstart'       => $eventkamp_event_start,
-                    'ACT_ALG.kampeinde'       => $eventkamp_event_einde,
-                    'ACT_ALG.kampjaar'        => $ditevent_kampjaar,
-                    'ACT_ALG.modified'        => $today_datetime,
-                    'ACT_ALG.activity_id'     => $mee_activity_id,
-                    'ACT_ALG.prioriteit:label'=> 'Normaal',
-                ],
-            ];
-//          wachthond($extdebug,7, 'params_activity_mee_update',                $params_activity_mee_update);
-            if ($extwrite == 1) {
-                $result_activity_mee_update = civicrm_api4('Activity','update', $params_activity_mee_update);
-            }
-//          wachthond($extdebug,9, 'result_activity_mee_update',                $result_activity_mee_update);
-
-            wachthond($extdebug,3, 'ditevent_event_start',  $ditevent_event_start);
-            wachthond($extdebug,3, 'ditevent_event_einde',  $ditevent_event_einde);
-
-            wachthond($extdebug,3, 'mee_update_next_year',  $mee_update_next_year);
-            wachthond($extdebug,3, 'mee_event_past_date',   $mee_event_past_date);
-            wachthond($extdebug,3, 'mee_event_next_date',   $mee_event_next_date);
-            wachthond($extdebug,3, 'mee_event_next_year',   $mee_event_next_year);
-        }
-
         wachthond($extdebug,2, "########################################################################");
-        wachthond($extdebug,1, "### WERVING 3.4 CONFIGURE VAKANTIEREGIO SCHOOLVAKANTIE", "[$display_name]");
+        wachthond($extdebug,1, "### WERVING 3.4 CONFIGURE VAKANTIEREGIO SCHOOLVAKANTIE",   "$displayname");
         wachthond($extdebug,2, "########################################################################");
 
         $new_vakantieregio = werving_civicrm_vakantieregio($contact_id);
 
         if (empty($werving_vakantieregio) AND !empty($new_vakantieregio)) {
             $vakantieregio = werving_civicrm_vakantieregio($contact_id);
+            $vakantieregio = (string) $vakantieregio;
+
             wachthond($extdebug,1, "new_vakantieregio",     $new_vakantieregio);
 
             if (is_numeric($key_vakantieregio)) {
                 wachthond($extdebug,3, 'OLD params[key_vakantieregio][value]', $params[$key_vakantieregio]);
-                $params[$key_vakantieregio]['value']   = $vakantieregio;
+                if ($extwrite == 1) { $params[$key_vakantieregio]['value']   = $vakantieregio; }
                 wachthond($extdebug,3, 'NEW params[key_vakantieregio][value]', $params[$key_vakantieregio]);
             } else {
 
@@ -855,10 +756,10 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         }
 
         wachthond($extdebug,2, "########################################################################");
-        wachthond($extdebug,1, "### WERVING 3.5 CONFIGURE LEEFTIJD TODAY & NEXT KAMP", "[$display_name]");
+        wachthond($extdebug,1, "### WERVING 3.5 CONFIGURE LEEFTIJD TODAY & NEXT KAMP",   "[$displayname]");
         wachthond($extdebug,2, "########################################################################");
 
-        $leeftijd_vantoday = leeftijd_civicrm_diff('vandaag',  $birth_date, $today_datetime);
+        $leeftijd_vantoday = leeftijd_civicrm_diff('vandaag',  $birthdate, $today_datetime);
         wachthond($extdebug,3, 'leeftijd_vantoday',             $leeftijd_vantoday);
         $leeftijd_vantoday_decimalen    = $leeftijd_vantoday['leeftijd_decimalen'] ?? NULL;
         $leeftijd_vantoday_rondjaren    = $leeftijd_vantoday['leeftijd_rondjaren'] ?? NULL;
@@ -868,21 +769,21 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         wachthond($extdebug,2, 'key_leeftijd_decimalen',        $key_leeftijd_decimalen);
         wachthond($extdebug,2, 'key_leeftijd_rondjaren',        $key_leeftijd_rondjaren);
 
-        if (is_numeric($key_leeftijd_decimalen)) {
+        if (is_numeric($key_leeftijd_decimalen) AND $leeftijd_vantoday_decimalen) {
             wachthond($extdebug,3, 'OLD params[key_leeftijd_decimalen][value]', $params[$key_leeftijd_decimalen]);
-            $params[$key_leeftijd_decimalen]['value']   = $leeftijd_vantoday_decimalen;
+            if ($extwrite == 1) { $params[$key_leeftijd_decimalen]['value']   = $leeftijd_vantoday_decimalen; }
             wachthond($extdebug,3, 'NEW params[key_leeftijd_decimalen][value]', $params[$key_leeftijd_decimalen]);
         }
-        if (is_numeric($key_leeftijd_rondjaren)) {
+        if (is_numeric($key_leeftijd_rondjaren) AND $leeftijd_vantoday_rondjaren) {
             wachthond($extdebug,3, 'OLD params[key_leeftijd_rondjaren][value]', $params[$key_leeftijd_rondjaren]);
-            $params[$key_leeftijd_rondjaren]['value']   = $leeftijd_vantoday_rondjaren;
+            if ($extwrite == 1) { $params[$key_leeftijd_rondjaren]['value']   = $leeftijd_vantoday_rondjaren; }
             wachthond($extdebug,3, 'NEW params[key_leeftijd_rondjaren][value]', $params[$key_leeftijd_rondjaren]);
         }
 
         $lastnext_kamp_fromtoday        = find_lastnext($today_datetime);
         $nextkamp_start_date            = $lastnext_kamp_fromtoday['next_start_date'];
 
-        $leeftijd_nextkamp = leeftijd_civicrm_diff('nextkamp',  $birth_date, $nextkamp_start_date);
+        $leeftijd_nextkamp = leeftijd_civicrm_diff('nextkamp',  $birthdate, $nextkamp_start_date);
         wachthond($extdebug,3, 'leeftijd_nextkamp',             $leeftijd_nextkamp);
         $leeftijd_nextkamp_decimalen    = $leeftijd_nextkamp['leeftijd_decimalen'] ?? NULL;
         $leeftijd_nextkamp_rondjaren    = $leeftijd_nextkamp['leeftijd_rondjaren'] ?? NULL;
@@ -895,33 +796,42 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         wachthond($extdebug,2, 'key_nextkamp_rondjaren',        $key_nextkamp_rondjaren);
         wachthond($extdebug,2, 'key_nextkamp_rondmaand',        $key_nextkamp_rondmaand);
 
-        if (is_numeric($key_nextkamp_decimalen)) {
+        if (is_numeric($key_nextkamp_decimalen) AND $leeftijd_nextkamp_decimalen)   {
             wachthond($extdebug,3, 'OLD params[key_nextkamp_decimalen][value]', $params[$key_nextkamp_decimalen]);
-            $params[$key_nextkamp_decimalen]['value']   = $leeftijd_nextkamp_decimalen;
+            if ($extwrite == 1) { $params[$key_nextkamp_decimalen]['value']   = $leeftijd_nextkamp_decimalen; }
             wachthond($extdebug,3, 'NEW params[key_nextkamp_decimalen][value]', $params[$key_nextkamp_decimalen]);
         }
-        if (is_numeric($key_nextkamp_rondjaren)) {
+        if (is_numeric($key_nextkamp_rondjaren) AND $leeftijd_nextkamp_rondjaren)   {
             wachthond($extdebug,3, 'OLD params[key_nextkamp_rondjaren][value]', $params[$key_nextkamp_rondjaren]);
-            $params[$key_nextkamp_rondjaren]['value']   = $leeftijd_nextkamp_rondjaren;
+            if ($extwrite == 1) { $params[$key_nextkamp_rondjaren]['value']   = $leeftijd_nextkamp_rondjaren; }
             wachthond($extdebug,3, 'NEW params[key_nextkamp_rondjaren][value]', $params[$key_nextkamp_rondjaren]);
         }
-        if (is_numeric($key_nextkamp_rondmaand)) {
+        if (is_numeric($key_nextkamp_rondmaand) AND $leeftijd_nextkamp_rondmaand)   {
             wachthond($extdebug,3, 'OLD params[key_nextkamp_rondmaand][value]', $params[$key_nextkamp_rondmaand]);
-            $params[$key_nextkamp_rondmaand]['value']   = $leeftijd_nextkamp_rondmaand;
+            if ($extwrite == 1) { $params[$key_nextkamp_rondmaand]['value']   = $leeftijd_nextkamp_rondmaand; }
             wachthond($extdebug,3, 'NEW params[key_nextkamp_rondmaand][value]', $params[$key_nextkamp_rondmaand]);
         }
 
         wachthond($extdebug,3, "params (NEW)",  $params);
 
+        wachthond($extdebug,2, "########################################################################");
+        wachthond($extdebug,1, "### WERVING 3.6 CREATE OR UPDATE ACTIVITY MEE",          "[$displayname]");
+        wachthond($extdebug,2, "########################################################################");
+
+        werving_civicrm_activitymee($contact_id, $mee_update, $displayname);
+
         wachthond($extdebug,1, "########################################################################");
         wachthond($extdebug,1, "### WERVING [PRE] EINDE BELANGSTELLING / MEE", "[groupID: $groupID / op: $op]");
         wachthond($extdebug,1, "########################################################################");
     }
+
+    // Helemaal aan het einde van de functie:
+    $isBusy = false;
 }
 
 function werving_civicrm_vakantieregio($contactid) {
 
-    $extdebug   = 1;  //  1 = basic // 2 = verbose // 3 = params / 4 = results
+    $extdebug   = 0;  //  1 = basic // 2 = verbose // 3 = params / 4 = results
     $apidebug   = FALSE;
 
     if (empty($contactid)) {
@@ -968,20 +878,20 @@ function werving_civicrm_vakantieregio($contactid) {
         wachthond($extdebug,9, 'result_adres_get',          $result_adres_get);
 
         if (isset($result_adres_get))    {
-            $display_name               = $result_adres_get[0]['display_name']                                  ?? NULL;
-            $adres_id                   = $result_adres_get[0]['address_primary.id']                            ?? NULL;
-            $adres_street_address       = trim($result_adres_get[0]['address_primary.street_address'])          ?? NULL;
-            $adres_street_number        = trim($result_adres_get[0]['address_primary.street_number'])           ?? NULL;
-            $adres_street_suffix        = trim($result_adres_get[0]['address_primary.street_number_suffix'])    ?? NULL;
-            $adres_postcode             = trim($result_adres_get[0]['address_primary.postal_code'])             ?? NULL;
-            $adres_plaats               = trim($result_adres_get[0]['address_primary.city'])                    ?? NULL;
-            $adres_gemeente             = trim($result_adres_get[0]['address_primary.Adresgegevens.Gemeente'])  ?? NULL;
-            $adres_provincie            = trim($result_adres_get[0]['address_primary.Adresgegevens.Provincie']) ?? NULL;
-            $werving_vakantieregio      = trim($result_adres_get[0]['WERVING.vakantieregio'])                   ?? NULL;
+            $displayname            = $result_adres_get[0]['display_name']                                              ?? NULL;
+            $adres_id               = $result_adres_get[0]['address_primary.id']                                        ?? NULL;
+            $adres_street_address   = trim($result_adres_get[0]['address_primary.street_address']           ?? '')      ?? NULL;
+            $adres_street_number    = trim($result_adres_get[0]['address_primary.street_number']            ?? '')      ?? NULL;
+            $adres_street_suffix    = trim($result_adres_get[0]['address_primary.street_number_suffix']     ?? '')      ?? NULL;
+            $adres_postcode         = trim($result_adres_get[0]['address_primary.postal_code']              ?? '')      ?? NULL;
+            $adres_plaats           = trim($result_adres_get[0]['address_primary.city']                     ?? '')      ?? NULL;
+            $adres_gemeente         = trim($result_adres_get[0]['address_primary.Adresgegevens.Gemeente']   ?? '')      ?? NULL;
+            $adres_provincie        = trim($result_adres_get[0]['address_primary.Adresgegevens.Provincie']  ?? '')      ?? NULL;
+            $werving_vakantieregio  = trim($result_adres_get[0]['WERVING.vakantieregio'])                   ?? NULL;
 
-            $adres_postcode             = str_replace(' ', '',  $adres_postcode);
+            if ($adres_postcode) { $adres_postcode             = str_replace(' ', '',  $adres_postcode); }
 
-            wachthond($extdebug,1, 'display_name',              $display_name);
+            wachthond($extdebug,1, 'displayname',               $displayname);
             wachthond($extdebug,2, 'adres_id',                  $adres_id);
             wachthond($extdebug,1, 'adres_street_address',      $adres_street_address);
             wachthond($extdebug,2, 'adres_street_number',       $adres_street_number);
@@ -1015,7 +925,6 @@ function werving_civicrm_vakantieregio($contactid) {
                 'debug' => $apidebug,
                 'where' => [
                     ['id',          '=', $adres_id],
-//                  ['contact_id',  '=', $contact_id],
                 ],
                 'values' => [
                     'street_name'           => $adres_street_name,
@@ -1266,7 +1175,6 @@ function werving_civicrm_vakantieregio($contactid) {
 
         werving_civicrm_address_update($contact_id, $adres_id, $adres_update_array);
 
-
         if (!empty($regio_name)) {
 
             wachthond($extdebug,1, "########################################################################");
@@ -1281,7 +1189,7 @@ function werving_civicrm_vakantieregio($contactid) {
 
 function werving_civicrm_vakantieregio_write($contactid, $regio) {
 
-    $extdebug       = 2;  //  1 = basic // 2 = verbose // 3 = params / 4 = results
+    $extdebug       = 0;  //  1 = basic // 2 = verbose // 3 = params / 4 = results
     $apidebug       = FALSE;
 
     $contact_id     =   $contactid;
@@ -1310,15 +1218,15 @@ function werving_civicrm_vakantieregio_write($contactid, $regio) {
     wachthond($extdebug,9, 'result_contact_get',            $result_contact_get);
 
     if (isset($result_contact_get))    {
-        $display_name           = $result_contact_get[0]['display_name']            ?? NULL;
+        $displayname            = $result_contact_get[0]['display_name']            ?? NULL;
         $werving_vakantieregio  = $result_contact_get[0]['WERVING.vakantieregio']   ?? NULL;
 
-        wachthond($extdebug,1, 'display_name',              $display_name);
+        wachthond($extdebug,1, 'displayname',               $displayname);
         wachthond($extdebug,1, 'werving_vakantieregio',     $werving_vakantieregio);
     }
 
     wachthond($extdebug,2, "########################################################################");
-    wachthond($extdebug,1, "### REGIO WRITE - SCHRIJF WAARDE NAAR DB",            "[REGIO: $vakantieregio]");
+    wachthond($extdebug,1, "### REGIO WRITE - SCHRIJF WAARDE NAAR DB",      "[REGIO: $vakantieregio]");
     wachthond($extdebug,2, "########################################################################");
 
     if (!empty($werving_vakantieregio)) {
@@ -1547,7 +1455,7 @@ function splitstreetaddress($streetAddress) {
 
 function werving_civicrm_address_update($contactid, $adresid, $adres_array) {
 
-    $extdebug               = 3;  //  1 = basic // 2 = verbose // 3 = params / 4 = results
+    $extdebug               = 0;  //  1 = basic // 2 = verbose // 3 = params / 4 = results
     $apidebug               = FALSE;
 
     $contact_id             = $contactid;
@@ -1628,7 +1536,6 @@ function werving_civicrm_address_update($contactid, $adresid, $adres_array) {
     if ($adres_lat)             { $params_update_adres['values']['geo_code_1']              = $adres_lat;               }
     if ($adres_lng)             { $params_update_adres['values']['geo_code_2']              = $adres_lng;               }
     if ($adres_surfacearea)     { $params_update_adres['values']['street_type']             = $adres_surfacearea;       }
-    if ($adres_surfacearea)     { $params_update_adres['values']['street_type']             = $adres_surfacearea;       }
 
     wachthond($extdebug,3, 'params_update_adres',               $params_update_adres);
     if ($address_id > 0) {
@@ -1640,6 +1547,385 @@ function werving_civicrm_address_update($contactid, $adresid, $adres_array) {
     wachthond($extdebug,2, "### ADRES - UPDATE PRIMARY ADRES MET NIEUWE GEGEVENS",          "[EINDE]");
     wachthond($extdebug,2, "########################################################################");
 
+}
 
+function werving_civicrm_activitymee($contactid, $mee_update, $displayname = NULL) {
 
+    $extdebug       = 0;  //  1 = basic // 2 = verbose // 3 = params / 4 = results
+    $apidebug       = FALSE;
+
+    $contact_id     = $contactid;
+    $displayname    = $displayname;
+
+    if (empty($contact_id) OR empty($mee_update)) {
+        return;
+    }
+
+    wachthond($extdebug,1, "########################################################################");
+    wachthond($extdebug,1, "### WERVING 3.0 CONFIGURE ACTIVITY MEE $displayname",           "[START]");
+    wachthond($extdebug,1, "########################################################################");
+
+    $mee_update             = $mee_update;
+    wachthond($extdebug,3, 'mee_update',                    $mee_update);
+
+    $today_datetime                 = date("Y-m-d H:i:s");
+    $today_datetime_past            = date('Y-m-d H:i:s', strtotime('-50 year', strtotime($today_datetime)) );
+
+    $mee_update_nextkamp_lastnext   = find_lastnext($mee_update); 
+    wachthond($extdebug,3, 'mee_update_nextkamp_lastnext',          $mee_update_nextkamp_lastnext);
+
+    $mee_update_nextkamp_start_date =   $mee_update_nextkamp_lastnext['next_start_date'];
+    $mee_update_nextkamp_einde_date =   $mee_update_nextkamp_lastnext['next_einde_date'];
+    $mee_update_nextkamp_kampjaar   = date('Y', strtotime($mee_update_nextkamp_start_date)) ?? NULL;
+    wachthond($extdebug,3, 'mee_update_nextkamp_start_date',        $mee_update_nextkamp_start_date);
+    wachthond($extdebug,3, 'mee_update_nextkamp_einde_date',        $mee_update_nextkamp_einde_date);
+    wachthond($extdebug,3, 'mee_update_nextkamp_kampjaar',          $mee_update_nextkamp_kampjaar);
+
+    $mee_update_nextkamp_fiscalyear         = curriculum_civicrm_fiscalyear($mee_update_nextkamp_start_date);
+    $mee_update_nextkamp_fiscalyear_start   = $mee_update_nextkamp_fiscalyear['fiscalyear_start'] ?? NULL;
+    $mee_update_nextkamp_fiscalyear_einde   = $mee_update_nextkamp_fiscalyear['fiscalyear_einde'] ?? NULL;
+    wachthond($extdebug,3, 'mee_update_nextkamp_fiscalyear_start', $mee_update_nextkamp_fiscalyear_start);
+    wachthond($extdebug,3, 'mee_update_nextkamp_fiscalyear_einde', $mee_update_nextkamp_fiscalyear_einde);    
+/*
+    $today_nextkamp_lastnext        = find_lastnext($today_datetime); 
+    wachthond($extdebug,3, 'today_nextkamp_lastnext',               $today_nextkamp_lastnext);
+    $today_nextkamp_start_date      =   $today_nextkamp_lastnext['next_start_date'];
+    wachthond($extdebug,3, 'today_nextkamp_start_date',             $today_nextkamp_start_date);
+    $today_nextkamp_einde_date      =   $today_nextkamp_lastnext['next_einde_date'];
+    wachthond($extdebug,3, 'today_nextkamp_einde_date',             $today_nextkamp_einde_date);
+    $today_nextkamp_kampjaar        = date('Y', strtotime($today_nextkamp_start_date))      ?? NULL;
+
+    ##########################################################################################
+    ### SET DEFAULT VALUE FOR NEW_WERVING_MEE_UPDATE & BEPAAL FISCAL YEAR START & EINDE
+    ##########################################################################################        
+
+    $datum_komendkamp_datetime  = new DateTime($new_mee_update_nextyear.'-08-01 16:00:00');
+    wachthond($extdebug,3, 'datum_komendkamp_datetime',     $datum_komendkamp_datetime);
+    $datum_komendkamp_string    = $datum_komendkamp_datetime->format('Y-m-d H:i:s');
+    wachthond($extdebug,3, 'datum_komendkamp_string',       $datum_komendkamp_string);
+    $datum_komendkamp_dbstring  = date("YmdHis", strtotime($datum_komendkamp_string));
+    wachthond($extdebug,2, 'datum_komendkamp_dbstring',     $datum_komendkamp_dbstring);
+
+    $today_nextkamp_nextkamp_fiscalyear     = curriculum_civicrm_fiscalyear($today_nextkamp_start_date);
+    $today_nextkamp_fiscalyear_start        = $mee_fiscalyear['fiscalyear_start'] ?? NULL;
+    $today_nextkamp_fiscalyear_einde        = $mee_fiscalyear['fiscalyear_einde'] ?? NULL;
+
+    wachthond($extdebug,3, 'today_nextkamp_fiscalyear_start',      $today_nextkamp_fiscalyear_start);
+    wachthond($extdebug,3, 'today_nextkamp_fiscalyear_einde',      $today_nextkamp_fiscalyear_einde);
+*/
+    $array_contditjaar          = base_cid2cont($contact_id);
+    wachthond($extdebug,4, "array_contditjaar",         $array_contditjaar);
+
+    $array_allpart_ditjaar      = base_find_allpart($contact_id, $mee_update_nextkamp_start_date);
+    wachthond($extdebug,3, "array_allpart_ditjaar",     $array_allpart_ditjaar);
+
+    $ditjaar_one_part_id                = $array_allpart_ditjaar['result_allpart_one_part_id'];
+    $ditjaar_one_deel_part_id           = $array_allpart_ditjaar['result_allpart_one_deel_part_id'];
+    $ditjaar_one_leid_part_id           = $array_allpart_ditjaar['result_allpart_one_leid_part_id'];
+
+    $ditjaar_one_event_id               = $array_allpart_ditjaar['result_allpart_one_event_id'];
+    $ditjaar_one_deel_event_id          = $array_allpart_ditjaar['result_allpart_one_deel_event_id'];
+    $ditjaar_one_leid_event_id          = $array_allpart_ditjaar['result_allpart_one_leid_event_id'];
+
+    $ditjaar_one_kampfunctie            = $array_allpart_ditjaar['result_allpart_one_kampfunctie'];
+    $ditjaar_one_deel_kampfunctie       = $array_allpart_ditjaar['result_allpart_one_deel_kampfunctie'];
+    $ditjaar_one_leid_kampfunctie       = $array_allpart_ditjaar['result_allpart_one_leid_kampfunctie'];
+
+    $ditjaar_one_kampkort               = $array_allpart_ditjaar['result_allpart_one_kampkort'];
+    $ditjaar_one_deel_kampkort          = $array_allpart_ditjaar['result_allpart_one_deel_kampkort'];
+    $ditjaar_one_leid_kampkort          = $array_allpart_ditjaar['result_allpart_one_leid_kampkort'];
+
+    $ditjaar_pos_part_id                = $array_allpart_ditjaar['result_allpart_pos_part_id'];
+    $ditjaar_pos_deel_part_id           = $array_allpart_ditjaar['result_allpart_pos_deel_part_id'];
+    $ditjaar_pos_leid_part_id           = $array_allpart_ditjaar['result_allpart_pos_leid_part_id'];
+
+    $ditjaar_pos_event_id               = $array_allpart_ditjaar['result_allpart_pos_event_id'];
+    $ditjaar_pos_deel_event_id          = $array_allpart_ditjaar['result_allpart_pos_deel_event_id'];
+    $ditjaar_pos_leid_event_id          = $array_allpart_ditjaar['result_allpart_pos_leid_event_id'];
+
+    $ditjaar_pos_kampfunctie            = $array_allpart_ditjaar['result_allpart_pos_kampfunctie'];
+    $ditjaar_pos_deel_kampfunctie       = $array_allpart_ditjaar['result_allpart_pos_deel_kampfunctie'];
+    $ditjaar_pos_leid_kampfunctie       = $array_allpart_ditjaar['result_allpart_pos_leid_kampfunctie'];
+
+    $ditjaar_pos_kampkort               = $array_allpart_ditjaar['result_allpart_pos_kampkort'];
+    $ditjaar_pos_deel_kampkort          = $array_allpart_ditjaar['result_allpart_pos_deel_kampkort'];
+    $ditjaar_pos_leid_kampkort          = $array_allpart_ditjaar['result_allpart_pos_leid_kampkort'];    
+
+    $ditjaar_kampkort_low       = preg_replace('/[^ \w-]/','',strtolower(trim($ditjaar_kampkort)));  // only letters/numbers/dashes
+    $ditjaar_kampkort_cap       = preg_replace('/[^ \w-]/','',strtoupper(trim($ditjaar_kampkort)));  // only letters/numbers/dashes
+
+    // ALS ER 1 IS DAN DIE
+    if ($ditjaar_one_kampkort) {
+        $ditjaar_kampkort       = $ditjaar_one_kampkort;
+        $ditjaar_kampfunctie    = $ditjaar_one_kampfunctie;
+    }
+    // ALS ER MEER ZIJN DAN DE POS
+    if ($ditjaar_pos_kampkort) {
+        $ditjaar_kampkort       = $ditjaar_pos_kampkort;
+        $ditjaar_kampfunctie    = $ditjaar_pos_kampfunctie;
+    }
+
+    if ($ditjaar_one_deel_kampkort OR $ditjaar_pos_deel_kampkort) {
+        $ditjaar_kamprol        = 'deelnemer';
+    }
+    if ($ditjaar_one_leid_kampkort OR $ditjaar_pos_leid_kampkort) {
+        $ditjaar_kamprol        = 'leiding';
+    }
+
+    wachthond($extdebug,3, 'ditjaar_one_kampfunctie',       $ditjaar_one_kampfunctie);
+    wachthond($extdebug,3, 'ditjaar_one_deel_kampfunctie',  $ditjaar_one_deel_kampfunctie);
+    wachthond($extdebug,3, 'ditjaar_one_leid_kampfunctie',  $ditjaar_one_leid_kampfunctie);
+
+    wachthond($extdebug,3, 'ditjaar_pos_kampfunctie',       $ditjaar_pos_kampfunctie);
+    wachthond($extdebug,3, 'ditjaar_pos_deel_kampfunctie',  $ditjaar_pos_deel_kampfunctie);
+    wachthond($extdebug,3, 'ditjaar_pos_leid_kampfunctie',  $ditjaar_pos_leid_kampfunctie);
+
+    wachthond($extdebug,3, 'ditjaar_kamprol',               $ditjaar_kamprol);
+    wachthond($extdebug,3, 'ditjaar_kampfunctie',           $ditjaar_kampfunctie);
+
+    $birthdate          = $array_contditjaar['birth_date']      ?? NULL;
+    $geslacht           = $array_contditjaar['geslacht']        ?? NULL;
+    $first_name         = $array_contditjaar['first_name']      ?? NULL;
+    $middle_name        = $array_contditjaar['middle_name']     ?? NULL;
+    $last_name          = $array_contditjaar['last_name']       ?? NULL;    
+    $displayname        = $array_contditjaar['displayname']     ?? NULL;
+    $crm_drupalnaam     = $array_contditjaar['crm_drupalnaam']  ?? NULL;  // drupal username
+    $crm_externalid     = $array_contditjaar['crm_externalid']  ?? NULL;  // drupal cmsid
+
+    $mee_komendkamp     = $array_contditjaar['mee_komendkamp']  ?? NULL;
+    $mee_verwachting    = $array_contditjaar['mee_verwachting'] ?? NULL;
+    $mee_toelichting    = $array_contditjaar['mee_toelichting'] ?? NULL;
+    $mee_update         = $array_contditjaar['mee_update']      ?? NULL;
+    $mee_update_year    = $array_contditjaar['mee_update_year'] ?? NULL;
+    $mee_notities       = $array_contditjaar['mee_notities']    ?? NULL;
+
+    wachthond($extdebug,1, "########################################################################");
+    wachthond($extdebug,1, "### WERVING 3.1 MEE ACTIVITY - GET (cid: $contact_id)",      $displayname);
+    wachthond($extdebug,1, "########################################################################");
+
+    wachthond($extdebug,4, 'mee_update',            $mee_update);
+    wachthond($extdebug,4, 'today_datetime_past',   $today_datetime_past);
+
+    if (date_bigger($mee_update, $today_datetime_past) == 1) {
+
+        $params_activity_mee_get = [
+            'checkPermissions' => FALSE,
+            'debug' => $apidebug,
+            'select' => [
+                'row_count', 'id', 'activity_date_time', 'status_id', 'status_id:name', 'subject', 
+                'activity_contact.contact_id', 'activity_contact.display_nem',
+                'target_contact_id.display_name',
+            ],
+            'join' => [
+                ['ActivityContact AS activity_contact', 'INNER'],
+            ],
+            'where' => [
+                ['activity_contact.contact_id',       '=',  $contact_id],
+                ['activity_contact.record_type_id',   '=', 3],
+                ['activity_type_id:name',             '=', 'mee_ditjaar'],
+                ['activity_date_time',                '>=', $mee_update_nextkamp_fiscalyear_start],
+                ['activity_date_time',                '<=', $mee_update_nextkamp_fiscalyear_einde],
+            ],
+            'limit' => 1,
+        ];
+
+        wachthond($extdebug,3, 'params_activity_mee_get',       $params_activity_mee_get);
+        $result_mee_get       = civicrm_api4('Activity','get',  $params_activity_mee_get);
+        $result_mee_get_count = $result_mee_get->countMatched();
+//      wachthond($extdebug,9, 'result_activity_mee_get ',      $result_mee_get);   
+        wachthond($extdebug,3, 'result_mee_count',              $result_mee_get_count);
+    }
+
+    if ($mee_update AND $result_mee_get_count AND $result_mee_get_count == 1) {
+
+        $mee_activity_id            = $result_mee_get[0]['id']                              ?? NULL;
+        $mee_activity_status_id     = $result_mee_get[0]['status_id']                       ?? NULL;
+        $mee_activity_status_name   = $result_mee_get[0]['status_id:name']                  ?? NULL;
+        $mee_activity_datum         = $result_mee_get[0]['activity_date_time']              ?? NULL;
+        $mee_activity_contact_id    = $result_mee_get[0]['activity_contact.contact_id']     ?? NULL;
+        $mee_activity_displayname   = $result_mee_get[0]['target_contact_id.display_name']  ?? NULL;
+
+        wachthond($extdebug,2, 'mee_activity_id',               $mee_activity_id);
+        wachthond($extdebug,2, 'mee_activity_status_id',        $mee_activity_status_id);
+        wachthond($extdebug,2, 'mee_activity_status_name',      $mee_activity_status_name);
+        wachthond($extdebug,2, 'mee_activity_datum',            $mee_activity_datum);
+        wachthond($extdebug,2, 'mee_activity_contact_id',       $mee_activity_contact_id);
+        wachthond($extdebug,2, 'mee_activity_displayname',      $mee_activity_displayname);
+
+      } else {
+
+        $mee_activity_id        = NULL;
+        $mee_activity_status    = NULL;
+        $mee_activity_datum     = NULL;
+        wachthond($extdebug,3, 'mee_activity_id',   "No Activity Found");
+    }
+
+    if (date_bigger($mee_update, $today_datetime_past) == 1 AND $result_mee_get_count == 0 AND $mee_update_nextkamp_kampjaar > 2000) {
+
+        wachthond($extdebug,2, "########################################################################");
+        wachthond($extdebug,1, "### WERVING 3.2 MEE ACTIVITY - CREATE (cid: $contact_id)",   $displayname);
+        wachthond($extdebug,2, "########################################################################");
+
+        wachthond($extdebug,1, "########################################################################");
+        wachthond($extdebug,1, "CREATE mee_verwachting",                 $mee_verwachting);
+        wachthond($extdebug,1, "CREATE mee_toelichting",                 $mee_toelichting);
+        wachthond($extdebug,1, "########################################################################");
+
+        $params_activity_mee_create = [
+            'checkPermissions' => FALSE,
+            'debug' => $apidebug,
+            'values' => [
+                'source_contact_id'         => $contact_id,
+                'target_contact_id'         => $contact_id,
+                'activity_type_id:name'     => 'mee_ditjaar',
+                'activity_date_time'        => $mee_update,
+                'subject'                   => 'Mee in '. $mee_update_nextkamp_kampjaar.' : '.$mee_verwachting,
+                'status_id:name'            => 'Completed',
+                'ACT_MEE.kampjaar'          => $mee_update_nextkamp_kampjaar,
+                'ACT_MEE.komendkamp'        => $mee_update_nextkamp_start_date,
+                'ACT_MEE.rol'               => $ditjaar_kamprol,
+                'ACT_MEE.verwachting'       => $mee_verwachting, 
+                'ACT_MEE.toelichting'       => $mee_toelichting, 
+                'ACT_MEE.update'            => $mee_update,
+
+                'ACT_ALG.actcontact_naam'   => $mee_activity_displayname,
+                'ACT_ALG.actcontact_cid'    => $contact_id,
+
+                'ACT_ALG.kampnaam'          => $ditjaar_kampkort_cap,
+                'ACT_ALG.kampkort'          => $ditjaar_kampkort_low,
+                'ACT_ALG.kampfunctie'       => $ditjaar_kampfunctie,
+                'ACT_ALG.kamprol'           => $ditjaar_kamprol, 
+                'ACT_ALG.kampstart'         => $mee_update_nextkamp_start_date,
+                'ACT_ALG.kampeinde'         => $mee_update_nextkamp_einde_date,
+                'ACT_ALG.kampjaar'          => $mee_update_nextkamp_kampjaar,
+                'ACT_ALG.modified'          => $today_datetime,
+                'ACT_ALG.prioriteit:label'  => 'Normaal',
+            ],
+        ];
+        wachthond($extdebug,3, 'params_activity_mee_create',                $params_activity_mee_create);
+        if ($contact_id) {
+            $result_activity_mee_create = civicrm_api4('Activity','create', $params_activity_mee_create);
+        wachthond($extdebug,9, 'result_activity_mee_create',            $result_activity_mee_create);
+        }
+    }        
+
+    if (date_bigger($mee_update, $today_datetime_past) == 1 AND $result_mee_get_count == 1) {
+
+        wachthond($extdebug,2, "########################################################################");
+        wachthond($extdebug,1, "### WERVING 3.3 MEE ACTIVITY - UPDATE (cid: $contact_id)",   $displayname);
+        wachthond($extdebug,2, "########################################################################");
+
+        wachthond($extdebug,2, 'mee_activity_id',           $mee_activity_id);
+        wachthond($extdebug,2, 'mee_activity_status_id',    $mee_activity_status_id);
+        wachthond($extdebug,2, 'mee_activity_status_name',  $mee_activity_status_name);
+        wachthond($extdebug,2, 'mee_activity_datum',        $mee_activity_datum);
+
+        wachthond($extdebug,1, "mee_verwachting",           $mee_verwachting);
+        wachthond($extdebug,1, "mee_toelichting",           $mee_toelichting);
+        wachthond($extdebug,3, "########################################################################");
+
+        $params_activity_mee_update = [
+            'checkPermissions' => FALSE,
+            'debug' => $apidebug,
+            'where' => [
+                ['id',                      '=', $mee_activity_id],
+            ],        
+            'values' => [
+                'source_contact_id'         => $contact_id,
+                'target_contact_id'         => $contact_id,
+                'activity_type_id:name'     => 'mee_ditjaar',
+                'activity_date_time'        => $mee_update,
+                'subject'                   => 'Mee in '. $mee_update_nextkamp_kampjaar.' : '.$mee_verwachting,
+                'status_id:name'            => 'Completed',
+                'ACT_MEE.kampjaar'          => $mee_update_nextkamp_kampjaar,
+                'ACT_MEE.komendkamp'        => $mee_update_nextkamp_start_date,
+                'ACT_MEE.rol'               => $ditjaar_kamprol,
+                'ACT_MEE.verwachting'       => $mee_verwachting,
+                'ACT_MEE.toelichting'       => $mee_toelichting,
+                'ACT_MEE.update'            => $mee_update,
+
+                'ACT_ALG.actcontact_naam'   => $mee_activity_displayname,
+                'ACT_ALG.actcontact_cid'    => $contact_id,
+
+                'ACT_ALG.kampnaam'          => $ditjaar_kampkort_cap,
+                'ACT_ALG.kampkort'          => $ditjaar_kampkort_low,
+                'ACT_ALG.kampfunctie'       => $ditjaar_kampfunctie,
+                'ACT_ALG.rol'               => $ditjaar_kamprol,
+                'ACT_ALG.kampstart'         => $mee_update_nextkamp_start_date,
+                'ACT_ALG.kampeinde'         => $mee_update_nextkamp_einde_date,
+                'ACT_ALG.kampjaar'          => $mee_update_nextkamp_kampjaar,
+                'ACT_ALG.modified'          => $today_datetime,
+                'ACT_ALG.activity_id'       => $mee_activity_id,
+                'ACT_ALG.prioriteit:label'  => 'Normaal',
+            ],
+        ];
+        wachthond($extdebug,3, 'params_activity_mee_update',                $params_activity_mee_update);
+        if ($mee_activity_id) {
+            $result_activity_mee_update = civicrm_api4('Activity','update', $params_activity_mee_update);
+        }
+//      wachthond($extdebug,9, 'result_activity_mee_update',                $result_activity_mee_update);
+
+        wachthond($extdebug,3, 'ditevent_event_start',  $ditevent_event_start);
+        wachthond($extdebug,3, 'ditevent_event_einde',  $ditevent_event_einde);
+
+        wachthond($extdebug,3, 'mee_update_next_year',  $mee_update_next_year);
+        wachthond($extdebug,3, 'mee_event_past_date',   $mee_event_past_date);
+        wachthond($extdebug,3, 'mee_event_next_date',   $mee_event_next_date);
+        wachthond($extdebug,3, 'mee_event_next_year',   $mee_event_next_year);
+    }
+
+    wachthond($extdebug,1, "########################################################################");
+    wachthond($extdebug,1, "### WERVING 3.0 CONFIGURE ACTIVITY MEE VOOR $displayname",      "[EINDE]");
+    wachthond($extdebug,1, "########################################################################");
+
+}
+
+function werving_civicrm_acl($contactid, $datumbelangstelling, $drupalid = NULL) {
+
+    $extdebug               = 0;  //  1 = basic // 2 = verbose // 3 = params / 4 = results
+    $apidebug               = FALSE;
+
+    $contact_id             = $contactid;
+    $drupal_id              = $drupalid;
+    $datum_belangstelling   = $datumbelangstelling;
+
+    if (empty($contact_id) OR empty($datum_belangstelling)) {
+        return;
+    }
+
+    if ($contact_id > 0 AND empty($drupal_id)) {
+
+        $params_contact_get = [
+            'checkPermissions' => FALSE,
+            'debug'  => $apidebug,              
+            'select' => [
+                'display_name',
+                'external_identifier',
+            ],
+            'where' => [
+                ['id',  'IN', [$contact_id]],
+            ],
+        ];
+    }        
+    wachthond($extdebug,7, 'params_contact_get',            $params_contact_get);
+    $result_contact_get    = civicrm_api4('Contact','get',  $params_contact_get);
+    wachthond($extdebug,9, 'result_contact_get',            $result_contact_get);
+
+    if (isset($result_contact_get))    {
+        $displayname        = $result_contact_get[0]['display_name']        ?? NULL;
+        $drupal_id          = $result_contact_get[0]['external_identifier'] ?? NULL;
+
+        wachthond($extdebug,1, 'display_name',              $displayname);
+        wachthond($extdebug,1, 'drupal_id',                 $drupal_id);
+        wachthond($extdebug,1, 'datum_belangstelling',      $datum_belangstelling);        
+    }
+
+    if ($drupal_id > 0) {
+
+        wachthond($extdebug,1, "########################################################################");
+        wachthond($extdebug,1, "### WERVING - ACL ADD TO CMS GROUP BELANGSTELLING",      "[$displayname]");
+        wachthond($extdebug,1, "########################################################################");
+
+//      cms_group_create($drupal_id, 'belangstelling');
+    }
 }

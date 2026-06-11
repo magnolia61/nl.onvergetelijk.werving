@@ -58,6 +58,7 @@ function werving_get_field_map(): array {
         'vakantieregio_1949'        => 'WERVING.vakantieregio',
         'mee_update_text_2224'      => 'WERVING.mee_update_text',
         'mee_contact_2234'          => 'WERVING.mee_contact',
+        'werving_trigger_2327'      => 'WERVING.werving_trigger',
     ];
 }
 
@@ -106,12 +107,8 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
         return;
     }
 
-    $processing_werving_pre  = TRUE;
-    $werving_custompre_start = microtime(TRUE);
-    watchdog('civicrm_timing', base_microtimer("START werving_custompre [GID: $groupID / EID: $entityID]"), NULL, WATCHDOG_DEBUG);
-
     wachthond($extdebug, 1, "########################################################################");
-    wachthond($extdebug, 1, "### WERVING [PRE] 1.0 EXTRACTIE & MAPPING",                       "[MAP]");
+    wachthond($extdebug, 1, "### WERVING [PRE] 1.0 EXTRACTIE & MAPPING",         "[groupID: $groupID]");
     wachthond($extdebug, 1, "########################################################################");
 
     // --- STAP 1.0: EXTRACTIE ---
@@ -125,6 +122,25 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
     if (empty($params_werving)) {
         return;
     }
+
+    // --- OPTIMALISATIE 3: VROEGE RETURN ALS ALLEEN GECACHEDE LEEFTIJDVELDEN IN PARAMS ZITTEN ---
+    // Formulieren die GID 270 schrijven maar alleen output-velden bevatten (bijv. de inloglink-
+    // aanvraag) hebben geen actionable input. configure() zou ze toch recalculeren tot dezelfde
+    // waarden. Dit bespaart ~3 seconden per aanvraag.
+    static $passive_werving_fields = [
+        'WERVING.leeftijd_decimalen', 'WERVING.leeftijd_rondjaren',
+        'WERVING.nextkamp_decimalen', 'WERVING.nextkamp_rondjaren', 'WERVING.nextkamp_rondmaand',
+        'WERVING.mee_update_year',
+    ];
+    if (empty(array_diff(array_keys($params_werving), $passive_werving_fields))) {
+        return;
+    }
+
+    // --- DE LOCK PAS AANZETTEN ALS WE ZEKER WETEN DAT WE DOORGAAN ---
+    $processing_werving_pre  = TRUE;
+
+    $werving_custompre_start = microtime(TRUE);
+    watchdog('civicrm_timing', base_microtimer("START werving_custompre [GID: $groupID / EID: $entityID]"), NULL, WATCHDOG_DEBUG);
 
     wachthond($extdebug, 1, "########################################################################");
     wachthond($extdebug, 1, "### WERVING [PRE] 2.0 START VERWERKING",                "[ID: $entityID]");
@@ -140,9 +156,42 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
     wachthond($extdebug, 1, "### WERVING [PRE] 3.0 INJECTIE EN EXTERNAL SAVE",           "[$entityID]");
     wachthond($extdebug, 2, "########################################################################");
 
+    // --- STAP 3.0 EXTRA: WELKE_KAMPWEKEN BEREKENING & INJECTIE ---
+    // Als welke_leeftijdsgroep EN welke_kampweek zijn ingevuld, bereken welke_kampweken
+    // en inject het direct in $params via base_inject_params (atomair).
+    $val_leeftijdsgroep = $params_werving['WERVING.Welke_leeftijdsgroep'] ?? NULL;
+    $val_kampweek = $params_werving['WERVING.Welke_kampweek'] ?? NULL;
+
+    if (!empty($val_leeftijdsgroep) && !empty($val_kampweek)) {
+        $str_groep = (string) $val_leeftijdsgroep;
+        $str_week = (string) $val_kampweek;
+
+        $kampweken_result = '';
+        $kamp_mapping = [
+            'kinderkamp' => 'KK',
+            'brugkamp'   => 'BK',
+            'tienerkamp' => 'TK',
+            'jeugdkamp'  => 'JK',
+        ];
+
+        foreach ($kamp_mapping as $zoekterm => $prefix) {
+            if (strpos(strtolower($str_groep), $zoekterm) !== false) {
+                if (strpos($str_week, '1') !== false)            { $kampweken_result .= "\x01{$prefix}1\x01"; }
+                if (strpos($str_week, '2') !== false)            { $kampweken_result .= "\x01{$prefix}2\x01"; }
+                if (strpos($str_week, 'maaktnietuit') !== false)  { $kampweken_result .= "\x01{$prefix}1\x01{$prefix}2\x01"; }
+            }
+        }
+
+        if (!empty($kampweken_result)) {
+            // Voeg toe aan data_to_inject voor base_inject_params
+            $data_to_inject['WERVING.Welke_kampweken'] = $kampweken_result;
+            wachthond($extdebug, 3, "WELKE_KAMPWEKEN BEREKENING", "groep=$str_groep, week=$str_week → $kampweken_result");
+        }
+    }
+
     // --- STAP 3.0: RESULTATEN TERUGSTOPPEN IN HET FORMULIER ---
-    // We hebben nu berekende data (bijv. exacte leeftijden of status mee). 
-    // Deze injecteren we naadloos terug in de originele $params transactie, 
+    // We hebben nu berekende data (bijv. exacte leeftijden, status mee, kampweken).
+    // Deze injecteren we naadloos terug in de originele $params transactie,
     // zodat CiviCRM ze straks samen met de rest van het formulier opslaat.
     if (!empty($data_to_inject)) {
         $success_list = base_inject_params($params, $data_to_inject, $field_ids, $entityID, "WERVING", $extdebug);
@@ -153,12 +202,24 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
     }
 
     // --- STAP 4.0: DRUPAL RECHTEN (ACL) UPDATEN ---
-    // Als iemand belangstelling toont, moeten we zorgen dat diegene in Drupal 
+    // Als iemand belangstelling toont, moeten we zorgen dat diegene in Drupal
     // de juiste rechten krijgt om de portal te zien.
     $val_datum_belangstelling = $data_to_inject['WERVING.Datum_belangstelling'] ?? $params_werving['WERVING.Datum_belangstelling'] ?? null;
-    
+
     if (isset($val_datum_belangstelling)) {
         werving_civicrm_acl($entityID, $val_datum_belangstelling);
+    }
+
+    // --- STAP 4.1: CV TRIGGER ---
+    // Als werving_trigger wordt gezet (bijv. door sqltask 236 als failsafe voor
+    // contacten zonder curriculum-record), draai cv_civicrm_configure direct.
+    // customPre is hiervoor goed genoeg: cv leest participant-records, niet
+    // WERVING-velden, dus we hoeven niet te wachten op de DB-commit.
+    // Lichter dan JAAROVERZICHT-trigger (full core); hierdoor kan sqltask 236
+    // meerdere contacten per run verwerken.
+    if (isset($params_werving['WERVING.werving_trigger']) && function_exists('cv_civicrm_configure')) {
+        wachthond($extdebug, 1, "### WERVING [PRE] 4.1 CV TRIGGER via werving_trigger", "[$entityID]");
+        cv_civicrm_configure($entityID);
     }
 
     // --- STAP 5.0: DRUPAL DATUM CRASH VOORKOMEN ---
@@ -175,6 +236,9 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
     $total_werving_custompre_duur = number_format(microtime(TRUE) - $werving_custompre_start, 3);
     wachthond($extdebug, 3, "WERVING [PRE] duur totaal: {$total_werving_custompre_duur}s");
     watchdog('civicrm_timing', base_microtimer("EINDE werving_custompre"), NULL, WATCHDOG_DEBUG);
+
+    // --- HIER GAAT DE DEUR WEER VAN HET SLOT VOOR HET VOLGENDE RECORD IN DE BATCH ---
+    $processing_werving_pre = FALSE;
 }
 
 /**
@@ -300,12 +364,16 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
     wachthond($extdebug, 2, "########################################################################");
 
     // FUNCTIONEEL KAMPWEKEN:
-    // Vertaling van menselijke voorkeur ("Kinderkamp" & "Week 1") naar technische 
+    // Vertaling van menselijke voorkeur ("Kinderkamp" & "Week 1") naar technische
     // CiviCRM multiselect string ("\x01KK1\x01").
+    //
+    // BELANGRIJK: Dit gebeurt hier (in configure()), niet in customPre/custom,
+    // omdat configure() de bron is voor alle berekeningen. customPre injecteert
+    // het resultaat automatisch via base_inject_params().
     $new_welke_kampweken = "";
 
-    if (isset($val_welke_leeftijdsgroep) || isset($val_welke_kampweek)) {
-        
+    if (!empty($val_welke_leeftijdsgroep) || !empty($val_welke_kampweek)) {
+
         $str_groep  = (string) $val_welke_leeftijdsgroep;
         $str_week   = (string) $val_welke_kampweek;
 
@@ -317,15 +385,17 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
         ];
 
         foreach ($kamp_mapping as $zoekterm => $prefix) {
-            if (strpos($str_groep, $zoekterm) !== false) {
+            if (strpos(strtolower($str_groep), $zoekterm) !== false) {
                 // Voeg specifieke weken toe als die gekozen zijn
                 if (strpos($str_week, '1') !== false)               { $new_welke_kampweken .= "\x01{$prefix}1\x01"; }
                 if (strpos($str_week, '2') !== false)               { $new_welke_kampweken .= "\x01{$prefix}2\x01"; }
-                
+
                 // Als 'maakt niet uit' is aangevinkt, schrijven we ze in voor beide opties
                 if (strpos($str_week, 'maaktnietuit') !== false)    { $new_welke_kampweken .= "\x01{$prefix}1\x01{$prefix}2\x01"; }
             }
         }
+
+        wachthond($extdebug, 3, "KAMPWEKEN BEREKENING", "groep=$str_groep, week=$str_week, result=$new_welke_kampweken");
     }
 
     wachthond($extdebug, 2, "########################################################################");
@@ -407,14 +477,17 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
             // Verse belangstelling (van dit jaar)
             elseif (date_biggerequal($mee_update_fiscalyear_start, $val_datum_belangstelling) == 1) {
                 if (empty($val_mee_status)) {
-                    $new_mee_status = 'onbekend'; // HR moet dit nog bekijken
+                    $new_mee_status = 'onbekend'; // Interesse getoond, nog geen contact gehad
+                }
+                if (empty($val_mee_verwachting)) {
+                    $new_mee_verwachting = 'misschien'; // Verwachting: misschien gaat ze mee (tot we meer weten)
                 }
             }
         }
     }
 
     wachthond($extdebug, 2, "########################################################################");
-    wachthond($extdebug, 1, "### WERVING CONFIGURE - 3.4 LOGICA: ACTIVITY MEE",           "[ACTIVITY]");
+    wachthond($extdebug, 1, "### WERVING CONFIGURE - 3.4 LOGICA: ACTIVITY MEE",         "[ACTIVITY]");
     wachthond($extdebug, 2, "########################################################################");
 
     // Werk de CiviCRM tijdlijn-activiteit bij ("Mee dit jaar")
@@ -423,10 +496,40 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
     }
 
     wachthond($extdebug, 2, "########################################################################");
-    wachthond($extdebug, 1, "### WERVING CONFIGURE - 3.5 LOGICA: REGIO",                     "[REGIO]");
+    wachthond($extdebug, 1, "### WERVING CONFIGURE - 3.5 LOGICA: REGIO",                       "[REGIO]");
     wachthond($extdebug, 2, "########################################################################");
 
     $new_vakantieregio = werving_civicrm_vakantieregio($contact_id);
+    
+    wachthond($extdebug, 2, "########################################################################");
+    wachthond($extdebug, 1, "### WERVING CONFIGURE - 3.6 LOGICA: SYNC LEEFTIJD NAAR KAMP","[PART/LEID]");
+    wachthond($extdebug, 2, "########################################################################");
+
+    if ($active_pid > 0 && !empty($part_details) && function_exists('partstatus_leeftijd_configure')) {
+    
+        // Bepaal de juiste GroupID (190 voor leiding, 139 voor deelnemer)
+        $target_group_id            = ($ditjaar_pos_leid_part_id > 0) ? "190" : "139";
+        
+        $part_data                  = $part_details;
+        $part_data['birth_date']    = $part_data['birth_date'] ?? $cont['birth_date'] ?? NULL;
+        $part_data['contact_id']    = $contact_id; 
+        
+        // Sla de leeftijden direct op in de Participant database velden
+        partstatus_leeftijd_configure($part_data, $today_datetime, $target_group_id, "event", TRUE);
+    }
+
+    wachthond($extdebug, 2, "########################################################################");
+    wachthond($extdebug, 1, "### WERVING CONFIGURE - 3.7 LOGICA: TRIGGER PARTSTATUS MOTOR","[$active_pid]");
+    wachthond($extdebug, 2, "########################################################################");
+
+    if ($active_pid > 0 && !empty($part_details) && function_exists('partstatus_configure')) {
+    
+        // We roepen de hoofdfunctie van de partstatus module aan voor dit record.
+        // Omdat we $array_part als NULL meegeven, wordt deze intern "vers" uit de database 
+        // ingeladen (inclusief de leeftijden die we hierboven in 3.6 zojuist hebben opgeslagen).
+        // Context 'werving_sync' is puur voor nette logboekregistratie.
+        partstatus_configure($active_pid, NULL, NULL, 'werving_sync');
+    }
 
     wachthond($extdebug, 2, "########################################################################");
     wachthond($extdebug, 1, "### WERVING CONFIGURE - 4.0 VERZAMELAAR & OPSLAAN",          "[INJECTIE]");
@@ -440,10 +543,11 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
     // isset($$var_new) werkt hiervoor niet: dat returnt false voor zowel undefined als NULL.
     $computed_vars  = array_keys(get_defined_vars());
     $data_to_inject = [];
+    
     foreach ($name_map as $db_col => $api_name) {
-        $api_parts = explode('.', (string)$api_name);
-        $suffix    = end($api_parts);
-        $var_new   = 'new_' . strtolower($suffix);
+        $api_parts  = explode('.', (string)$api_name);
+        $suffix     = end($api_parts);
+        $var_new    = 'new_' . strtolower($suffix);
 
         if (in_array($var_new, $computed_vars)) {
             $data_to_inject[$api_name] = $$var_new;
@@ -462,6 +566,157 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
     watchdog('civicrm_timing', base_microtimer("EINDE werving_configure"), NULL, WATCHDOG_DEBUG);
 
     return $data_to_inject;
+}
+
+/**
+ * Implements hook_civicrm_custom().
+ *
+ * Vuurt NA de DB-commit van custom data (post-save), in tegenstelling tot customPre.
+ * Wanneer Datum_belangstelling gezet wordt, draaien we de volledige pipeline:
+ * CV → INTAKE → ACCOUNT → ACL.
+ *
+ * Waarom WERVING (270) NIET in profilecvmax staat (en dus core hier NIET vuurt):
+ *   Core schrijft zelf terug naar WERVING (leeftijd, nextkamp, etc.). Als WERVING
+ *   in profilecvmax zou zitten, veroorzaakt elk core-run een nieuwe WERVING-save
+ *   die opnieuw core triggert → oneindige loop.
+ *
+ * Waarom de pipeline hier volledig is (CV + INTAKE + ACCOUNT + ACL):
+ *   Een nieuwe vrijwilliger heeft na het invullen van het belangstellingsformulier
+ *   nog geen Drupal-account en geen ACL-rollen. Zonder ACCOUNT blijft het account
+ *   ongemaakt; zonder ACL krijgt het account verkeerde rollen (bijv. ooit_deelnemer
+ *   door de hardcoded rid 11 in drupal.php die vroeger bij account-aanmaak stond —
+ *   zie commit waarbij dat gefixed is). CV en INTAKE moeten voor ACL draaien zodat
+ *   ACL de juiste keren_deel=0 kan lezen.
+ *
+ * Waarom hier en niet in customPre:
+ *   In customPre (vóór commit) staat bio_ingevuld nog NIET in de DB als WERVING (270)
+ *   eerder verwerkt wordt dan INTAKE (181). intake_civicrm_configure zou dan
+ *   BIO_status='ongecheckt' opslaan en de correcte injectie van intake_customPre(181)
+ *   overschrijven. Door hier te wachten tot ná de commit zijn ALLE velden beschikbaar.
+ */
+function werving_civicrm_custom($op, $groupID, $entityID, &$params): void {
+
+    static $processing_werving_custom = [];
+
+    // Alleen WERVING (270), alleen na opslaan
+    if ($groupID !== 270 || !in_array($op, ['create', 'edit'])) {
+        return;
+    }
+
+    // Voorkom dubbele uitvoering voor dezelfde entiteit in één request
+    if (!empty($processing_werving_custom[$entityID])) {
+        return;
+    }
+    $processing_werving_custom[$entityID] = true;
+
+    $extdebug = 'werving.custom';
+
+    // Alleen triggeren als Datum_belangstelling gevuld is
+    $datum_belang = civicrm_api4('Contact', 'get', [
+        'checkPermissions' => FALSE,
+        'select'           => ['WERVING.Datum_belangstelling'],
+        'where'            => [['id', '=', $entityID]],
+    ])->first()['WERVING.Datum_belangstelling'] ?? NULL;
+
+    if (empty($datum_belang)) {
+        $processing_werving_custom[$entityID] = false;
+        return;
+    }
+
+    wachthond($extdebug, 1, "WERVING [CUSTOM] Volledige pipeline triggeren na DB-commit", "[$entityID]");
+
+    wachthond($extdebug, 2, "########################################################################");
+    wachthond($extdebug, 1, "### WERVING CUSTOM 1.0 CV (keren_deel, keren_leid berekenen)");
+    wachthond($extdebug, 2, "########################################################################");
+
+    // CV: keren_leid, keren_deel etc. berekenen
+    // Moet VOOR ACL draaien zodat ACL keren_deel=0 kan lezen en ooit_deelnemer
+    // niet ten onrechte toekent.
+    if (function_exists('cv_civicrm_configure')) {
+        cv_civicrm_configure($entityID);
+    }
+
+    wachthond($extdebug, 2, "########################################################################");
+    wachthond($extdebug, 1, "### WERVING CUSTOM 2.0 INTAKE (INT_nodig, BIO_status berekenen)");
+    wachthond($extdebug, 2, "########################################################################");
+
+    // INTAKE: INT_nodig, BIO_status etc. berekenen
+    // Op dit punt zijn ALLE webform-velden (incl. bio_ingevuld) al in de DB.
+    if (function_exists('intake_civicrm_configure') && function_exists('base_cid2cont')) {
+        $cont_array = base_cid2cont($entityID) ?: [];
+        $empty      = [];
+        intake_civicrm_configure($cont_array, [], $empty, 'belangstelling_trigger');
+    }
+
+    wachthond($extdebug, 2, "########################################################################");
+    wachthond($extdebug, 1, "### WERVING CUSTOM 2.5 MEE_STATUS INITIALISATIE (fallback voor webforms)");
+    wachthond($extdebug, 2, "########################################################################");
+
+    // Als het webform via Drupal werd ingevuld (niet via CiviCRM profiel),
+    // triggerde werving_civicrm_customPre niet (groupID=0). Dus mee_status
+    // kan nog leeg zijn. Hier stellen we het in op 'onbekend' als:
+    // - datum_belangstelling is onlangs ingevuld (< 1 jaar geleden)
+    // - mee_status is nog leeg
+    $cont_fresh = function_exists('base_cid2cont') ? base_cid2cont($entityID, TRUE) : [];
+    if (!empty($cont_fresh)) {
+        $val_mee_status = $cont_fresh['mee_status'] ?? NULL;
+        $val_datum_belang = $cont_fresh['datum_belangstelling'] ?? NULL;
+
+        // Check: is mee_status/mee_verwachting leeg EN is datum_belangstelling recent (< 1 jaar)?
+        if ((!empty($val_mee_status) || !empty($val_datum_belang)) && !empty($val_datum_belang)) {
+            $days_since = (int) date_diff(date_create($val_datum_belang), date_create('now'))->format('%a');
+            if ($days_since < 365) {
+                $update_vals = [];
+
+                if (empty($val_mee_status)) {
+                    $update_vals['WERVING.mee_status'] = 'onbekend';
+                    wachthond($extdebug, 1, "MEE_STATUS INITIALISATIE", "Datum belangstelling is recent ($days_since dagen), mee_status was leeg → zet op 'onbekend'");
+                }
+
+                if (empty($cont_fresh['mee_verwachting'] ?? NULL)) {
+                    $update_vals['WERVING.mee_verwachting'] = 'misschien';
+                    wachthond($extdebug, 1, "MEE_VERWACHTING INITIALISATIE", "Datum belangstelling is recent, mee_verwachting was leeg → zet op 'misschien'");
+                }
+
+                if (!empty($update_vals)) {
+                    civicrm_api4('Contact', 'update', [
+                        'checkPermissions' => FALSE,
+                        'values' => array_merge(['id' => $entityID], $update_vals),
+                    ]);
+                    wachthond($extdebug, 3, "mee status/verwachting update", "OK");
+                }
+            }
+        }
+    }
+
+    wachthond($extdebug, 2, "########################################################################");
+    wachthond($extdebug, 1, "### WERVING CUSTOM 3.0 ACCOUNT (Drupal account aanmaken als nodig)");
+    wachthond($extdebug, 2, "########################################################################");
+
+    // ACCOUNT: Drupal account aanmaken als het contact nog geen account heeft,
+    // en de eenmalige inloglink genereren. Moet voor ACL draaien zodat ACL
+    // een geldig drupal_id heeft om rollen op te zetten.
+    if (function_exists('account_civicrm_configure')) {
+        account_civicrm_configure($entityID);
+    }
+
+    wachthond($extdebug, 2, "########################################################################");
+    wachthond($extdebug, 1, "### WERVING CUSTOM 4.0 ACL (Drupal rollen en CiviCRM groepen)");
+    wachthond($extdebug, 2, "########################################################################");
+
+    // ACL: Drupal-rollen (ooit_belangstelling) en CiviCRM ACL-groepen (groep 855)
+    // synchroniseren op basis van de nu berekende CV-data en datum_belangstelling.
+    //
+    // Forceer een verse contactlezing ($force_fresh = TRUE) zodat base_cid2cont de
+    // static cache negeert. De cache kan stale datum_belang=NULL bevatten omdat een
+    // eerdere hook (civicrm_post op Contact) base_cid2cont al aanriep vóór de
+    // WERVING-custom-data werd gecommit.
+    if (function_exists('acl_civicrm_configure')) {
+        $cont_array_fresh = function_exists('base_cid2cont') ? base_cid2cont($entityID, TRUE) : NULL;
+        acl_civicrm_configure($entityID, $cont_array_fresh);
+    }
+
+    $processing_werving_custom[$entityID] = false;
 }
 
 /**
