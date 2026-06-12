@@ -18,6 +18,13 @@ use Civi\Test\TransactionalInterface;
  * "\x01TK1\x01" (TK = TienerKamp, 1 = week 1).
  *
  * De berekening gebeurt direct in werving_civicrm_customPre() via parameter-injectie.
+ *
+ * REGRESSIE (2026-06): de berekening werkte alleen als leeftijdsgroep én kampweek
+ * in DEZELFDE save binnenkwamen. Bij gescheiden saves (webform schrijft velden in
+ * fasen, of een bestaand contact) faalde de DB-fallback in werving_civicrm_configure
+ * omdat (a) base_cid2cont de werving_leeftijdsgroep/kampweek/kampweken-keys niet
+ * mapte en (b) het checkbox-veld leeftijdsgroep als array binnenkwam en blind naar
+ * (string) werd gecast. De testWelkeKampweken*EersteSave-tests dekken dat scenario af.
  */
 class WelkeKampwekenDbTest extends \PHPUnit\Framework\TestCase implements EndToEndInterface, TransactionalInterface {
 
@@ -49,6 +56,25 @@ class WelkeKampwekenDbTest extends \PHPUnit\Framework\TestCase implements EndToE
       'custom_378'       => 'tienerkamp',  // Welke_leeftijdsgroep
       'custom_377'       => 'week1',       // Welke_kampweek
     ]);
+  }
+
+  /**
+   * Zet één of meer werving-velden via een losse Contact.create (triggert de hook).
+   * Simuleert een webform die velden in aparte saves wegschrijft.
+   */
+  private function stelVeldenIn(array $velden): void {
+    \civicrm_api3('Contact', 'create', ['id' => $this->contactId] + $velden);
+  }
+
+  /**
+   * Normaliseer de multiselect-waarde (array of \x01-string) naar één string
+   * waarin we op de losse codes (TK1, KK2, ...) kunnen asserten.
+   */
+  private function normaliseerKampweken($value): string {
+    if (is_array($value)) {
+      return implode('', array_map(fn($v) => "\x01$v\x01", $value));
+    }
+    return (string) $value;
   }
 
   private function leesWelkeKampweken(): array {
@@ -83,14 +109,39 @@ class WelkeKampwekenDbTest extends \PHPUnit\Framework\TestCase implements EndToE
     $this->stelWelkeKampwekenIn();
     $db = $this->leesWelkeKampweken();
 
-    $value = $db['WERVING.Welke_kampweken'] ?? NULL;
-    // Multiselect kan array of string zijn
-    if (is_array($value)) {
-      $value = implode('', array_map(fn($v) => "\x01$v\x01", $value));
-    }
+    $value = $this->normaliseerKampweken($db['WERVING.Welke_kampweken'] ?? NULL);
 
-    $this->assertStringContainsString('TK1', (string)$value,
+    $this->assertStringContainsString('TK1', $value,
       "Voor Tienerkamp week1 moet welke_kampweken 'TK1' bevatten.");
+  }
+
+  /**
+   * REGRESSIE: leeftijdsgroep in save 1, kampweek pas in save 2.
+   * De berekening bij save 2 moet de leeftijdsgroep uit de DB-fallback halen.
+   * Faalde vóór de fix (base_cid2cont mapte de key niet) → kampweken bleef leeg.
+   */
+  public function testWelkeKampwekenLeeftijdsgroepEersteSave() {
+    $this->stelVeldenIn(['custom_378' => 'tienerkamp']);  // save 1: alleen leeftijdsgroep
+    $this->stelVeldenIn(['custom_377' => 'week1']);        // save 2: alleen kampweek
+
+    $value = $this->normaliseerKampweken($this->leesWelkeKampweken()['WERVING.Welke_kampweken'] ?? NULL);
+
+    $this->assertStringContainsString('TK1', $value,
+      'Kampweken moet ook berekend worden als leeftijdsgroep (save 1) en kampweek (save 2) gescheiden binnenkomen.');
+  }
+
+  /**
+   * REGRESSIE: kampweek in save 1, leeftijdsgroep pas in save 2.
+   * Spiegelbeeld van de vorige test (andere volgorde).
+   */
+  public function testWelkeKampwekenKampweekEersteSave() {
+    $this->stelVeldenIn(['custom_377' => 'week2']);        // save 1: alleen kampweek
+    $this->stelVeldenIn(['custom_378' => 'tienerkamp']);   // save 2: alleen leeftijdsgroep
+
+    $value = $this->normaliseerKampweken($this->leesWelkeKampweken()['WERVING.Welke_kampweken'] ?? NULL);
+
+    $this->assertStringContainsString('TK2', $value,
+      'Kampweken moet ook berekend worden als kampweek (save 1) en leeftijdsgroep (save 2) gescheiden binnenkomen.');
   }
 
 }

@@ -100,8 +100,8 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
     $profileids = [270]; // Alleen het specifieke Werving profiel als fallback
 
     // --- OPTIMALISATIE 1: VROEGE RETURN VOOR ONBEKENDE PROFIELEN ---
-    // Als er géén velden uit onze name_map in het formulier zaten (empty params_werving), 
-    // én we komen niet uit een bekend CiviCRM-profiel, dan heeft dit formulier 
+    // Als er géén velden uit onze name_map in het formulier zaten (empty params_werving),
+    // én we komen niet uit een bekend CiviCRM-profiel, dan heeft dit formulier
     // niets met werving te maken en stoppen we het script.
     if (!in_array($groupID, $profileids)) {
         return;
@@ -155,39 +155,6 @@ function werving_civicrm_customPre(string $op, int $groupID, int $entityID, arra
     wachthond($extdebug, 2, "########################################################################");
     wachthond($extdebug, 1, "### WERVING [PRE] 3.0 INJECTIE EN EXTERNAL SAVE",           "[$entityID]");
     wachthond($extdebug, 2, "########################################################################");
-
-    // --- STAP 3.0 EXTRA: WELKE_KAMPWEKEN BEREKENING & INJECTIE ---
-    // Als welke_leeftijdsgroep EN welke_kampweek zijn ingevuld, bereken welke_kampweken
-    // en inject het direct in $params via base_inject_params (atomair).
-    $val_leeftijdsgroep = $params_werving['WERVING.Welke_leeftijdsgroep'] ?? NULL;
-    $val_kampweek = $params_werving['WERVING.Welke_kampweek'] ?? NULL;
-
-    if (!empty($val_leeftijdsgroep) && !empty($val_kampweek)) {
-        $str_groep = (string) $val_leeftijdsgroep;
-        $str_week = (string) $val_kampweek;
-
-        $kampweken_result = '';
-        $kamp_mapping = [
-            'kinderkamp' => 'KK',
-            'brugkamp'   => 'BK',
-            'tienerkamp' => 'TK',
-            'jeugdkamp'  => 'JK',
-        ];
-
-        foreach ($kamp_mapping as $zoekterm => $prefix) {
-            if (strpos(strtolower($str_groep), $zoekterm) !== false) {
-                if (strpos($str_week, '1') !== false)            { $kampweken_result .= "\x01{$prefix}1\x01"; }
-                if (strpos($str_week, '2') !== false)            { $kampweken_result .= "\x01{$prefix}2\x01"; }
-                if (strpos($str_week, 'maaktnietuit') !== false)  { $kampweken_result .= "\x01{$prefix}1\x01{$prefix}2\x01"; }
-            }
-        }
-
-        if (!empty($kampweken_result)) {
-            // Voeg toe aan data_to_inject voor base_inject_params
-            $data_to_inject['WERVING.Welke_kampweken'] = $kampweken_result;
-            wachthond($extdebug, 3, "WELKE_KAMPWEKEN BEREKENING", "groep=$str_groep, week=$str_week → $kampweken_result");
-        }
-    }
 
     // --- STAP 3.0: RESULTATEN TERUGSTOPPEN IN HET FORMULIER ---
     // We hebben nu berekende data (bijv. exacte leeftijden, status mee, kampweken).
@@ -270,7 +237,11 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
 
     // Haal de hudige situatie van dit contact uit de database.
     // Dit is nodig als fallback voor velden die niet in het formulier zaten.
-    $cont = base_cid2cont($contact_id);
+    // force_fresh = TRUE: bij meerdere saves in één request (bijv. een webform dat
+    // leeftijdsgroep en kampweek in aparte saves wegschrijft) zou een eerdere save
+    // de cache al gevuld hebben vóór dit veld in de DB stond. Zonder verse lezing
+    // mist de fallback dan de zojuist opgeslagen waarde en blijft Welke_kampweken leeg.
+    $cont = base_cid2cont($contact_id, TRUE);
     if (empty($cont)) return [];
 
     wachthond($extdebug, 2, "########################################################################");
@@ -374,8 +345,11 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
 
     if (!empty($val_welke_leeftijdsgroep) || !empty($val_welke_kampweek)) {
 
-        $str_groep  = (string) $val_welke_leeftijdsgroep;
-        $str_week   = (string) $val_welke_kampweek;
+        // Multiselect-velden komen uit de DB-fallback ($cont) als array, maar uit
+        // het formulier ($params) als \x01-string. Beide platslaan naar één string
+        // zodat de strpos-checks hieronder in beide gevallen werken.
+        $str_groep  = is_array($val_welke_leeftijdsgroep) ? implode('', $val_welke_leeftijdsgroep) : (string) $val_welke_leeftijdsgroep;
+        $str_week   = is_array($val_welke_kampweek)       ? implode('', $val_welke_kampweek)       : (string) $val_welke_kampweek;
 
         $kamp_mapping = [
             'kinderkamp'    => 'KK',
@@ -652,9 +626,8 @@ function werving_civicrm_custom($op, $groupID, $entityID, &$params): void {
     wachthond($extdebug, 1, "### WERVING CUSTOM 2.5 MEE_STATUS INITIALISATIE (fallback voor webforms)");
     wachthond($extdebug, 2, "########################################################################");
 
-    // Als het webform via Drupal werd ingevuld (niet via CiviCRM profiel),
-    // triggerde werving_civicrm_customPre niet (groupID=0). Dus mee_status
-    // kan nog leeg zijn. Hier stellen we het in op 'onbekend' als:
+    // Bij een nieuwe belangstelling kan mee_status nog leeg zijn (customPre vult
+    // mee_status niet bij elke route). Hier stellen we het in op 'onbekend' als:
     // - datum_belangstelling is onlangs ingevuld (< 1 jaar geleden)
     // - mee_status is nog leeg
     $cont_fresh = function_exists('base_cid2cont') ? base_cid2cont($entityID, TRUE) : [];

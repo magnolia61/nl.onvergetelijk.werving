@@ -49,17 +49,25 @@ if (function_exists('intake_civicrm_configure') && function_exists('base_cid2con
 
 ## Hook-patroon (werving vs intake)
 
-Beide extensies volgen hetzelfde patroon: een DODE `_civicrm_customPre` (geen
-echte CiviCRM-hook, alleen door tests direct aangeroepen) naast een WERKENDE
-`_civicrm_custom` (de echte hook_civicrm_custom, post-commit).
+`hook_civicrm_customPre` ÉN `hook_civicrm_custom` zijn beide echte CiviCRM-hooks.
+- **customPre** vuurt vóór de DB-commit, per CustomGroup, met `$groupID` = de
+  CustomGroup-ID (270 voor WERVING). Hier injecteren we berekende waarden terug
+  in `$params` zodat ze in dezelfde transactie worden opgeslagen.
+- **custom** vuurt ná de commit; daar draait de volledige pipeline (cv/intake/
+  account/acl) omdat dan alle velden gecommit zijn.
 
 | Functie | Echte hook? | Live in productie? |
 |---|---|---|
-| `werving_civicrm_customPre` | nee (customPre bestaat niet) | ❌ dood |
+| `werving_civicrm_customPre` | ja (hook_civicrm_customPre)  | ✅ (group 270; geverifieerd via WelkeKampwekenDbTest) |
 | `werving_civicrm_custom`    | ja (hook_civicrm_custom)     | ✅ |
 | `intake_civicrm_pre`        | ja (hook_civicrm_pre)        | ✅ (alleen foto) |
 | `intake_civicrm_custom`     | ja (hook_civicrm_custom)     | ✅ (NIEUW 2026-06-06) |
-| `intake_civicrm_customPre`  | nee (customPre bestaat niet) | ❌ dood |
+| `intake_civicrm_customPre`  | ja (hook_civicrm_customPre)  | ⚠️ niet geverifieerd in dit onderzoek |
+
+> **Correctie (2026-06):** een eerdere versie van dit document stelde dat
+> `_civicrm_customPre` "niet bestaat" en dode code was. Dat klopt niet —
+> `hook_civicrm_customPre` is een standaard CiviCRM-hook en `werving_civicrm_customPre`
+> draait wel degelijk live (group 270).
 
 ## Opgelost (2026-06-06): Node 844 BIO-flow
 
