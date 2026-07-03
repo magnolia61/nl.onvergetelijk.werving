@@ -263,4 +263,97 @@ class BelanstellingFormulierTest extends \PHPUnit\Framework\TestCase implements 
       $this->assertArrayHasKey($key, $result, "Sleutel '$key' ontbreekt in de retourarray.");
     }
   }
+
+  // ########################################################################
+  // ### TEST 3: POORTWACHTER — ditjaardeelyes-wiring via base_bepaal_rolstatus()
+  // ########################################################################
+
+  /**
+   * Zoekt een echt, actief deelnemer-event in het huidige boekjaar (voor een verifieerbare
+   * Participant-fixture). Zelfde patroon als CoreHooksTest::vindKampeventMetKenmerken() —
+   * hergebruikt bestaande testdata in plaats van een Event helemaal from-scratch te bouwen.
+   */
+  private function vindActiefDeelnemerEvent(): ?int {
+    if (!function_exists('get_event_types') || !function_exists('find_fiscalyear')) {
+      return NULL;
+    }
+    $deelTypes  = get_event_types()['deel'] ?? [];
+    if (empty($deelTypes)) {
+      return NULL;
+    }
+
+    $fiscalyear = find_fiscalyear();
+
+    $events = \civicrm_api4('Event', 'get', [
+      'checkPermissions' => FALSE,
+      'where'            => [
+        ['event_type_id', 'IN', $deelTypes],
+        ['is_active',     '=',  TRUE],
+        ['start_date',    '>=', $fiscalyear['today_start']],
+        ['start_date',    '<=', $fiscalyear['today_einde']],
+      ],
+      'select'           => ['id'],
+      'limit'            => 1,
+    ]);
+
+    return $events->count() > 0 ? (int) $events->first()['id'] : NULL;
+  }
+
+  /**
+   * REGRESSIE-vangnet voor de ditjaardeelyes-wiring (3-jul-2026): een contact met een
+   * BEVESTIGDE deelnemer-registratie dit jaar (status 'Registered', een positieve status)
+   * mag NIET als leiding-belangstellende behandeld worden, ook niet met geldige
+   * formulier-input. De poortwachter in werving_civicrm_configure() loopt sinds vandaag via
+   * base_bepaal_rolstatus() (ditjaardeelyes overrult) — deze test bewijst dat de wiring
+   * daadwerkelijk werkt met een echte Participant-registratie, niet alleen in de losse
+   * unit-tests van base_bepaal_rolstatus() zelf.
+   *
+   * Vóór deze test bestond hier GEEN dekking: alle andere tests in dit bestand gebruiken
+   * een contact zonder Participant-registratie, dus is_deelnemer_nu/ditjaardeelyes was
+   * altijd 0 en de override-tak werd nooit geraakt.
+   */
+  public function testBevestigdeDeelnemerRegistratieBlokkeertBelangstelling(): void {
+    $eventId = $this->vindActiefDeelnemerEvent();
+    if ($eventId === NULL) {
+      $this->markTestSkipped('Geen actief deelnemer-event gevonden in het huidige boekjaar.');
+    }
+
+    $contactId = $this->callAPISuccess('Contact', 'create', [
+      'contact_type' => 'Individual',
+      'first_name'   => 'Werving',
+      'last_name'    => 'BevestigdDeelnemer',
+      // Ruim 18+ (niet 17-grens): dit isoleert de ditjaardeelyes-override — zonder de
+      // override zou iemand van deze leeftijd via belangstelling gewoon leiding-behandeling
+      // krijgen, dus als de test slaagt komt de blokkade aantoonbaar door de Participant-
+      // registratie, niet toevallig door de leeftijd.
+      'birth_date'   => '2005-01-01',
+    ])['id'];
+
+    \civicrm_api4('Participant', 'create', [
+      'checkPermissions' => FALSE,
+      'values'           => [
+        'contact_id'     => $contactId,
+        'event_id'       => $eventId,
+        'status_id:name' => 'Registered', // positieve status
+      ],
+    ]);
+
+    $result = werving_civicrm_configure($contactId, 'hook', [
+      'WERVING.Datum_belangstelling' => date('Y-m-d'),
+      'WERVING.Welke_leeftijdsgroep' => 'kinderkamp',
+      'WERVING.Welke_kampweek'       => 'week1',
+    ]);
+
+    // De poortwachter reset specifiek Datum_belangstelling en mee_status (zie sectie 3.0
+    // van werving_civicrm_configure()) — niet Welke_kampweken/mee_verwachting, die worden
+    // elders onvoorwaardelijk uit de formulier-input berekend. array_key_exists() i.p.v.
+    // ?? 'fallback', want ?? coalesceert een aanwezige NULL-waarde óók naar de fallback,
+    // wat assertNull() zou laten slagen om de verkeerde reden.
+    $this->assertArrayHasKey('WERVING.Datum_belangstelling', $result);
+    $this->assertNull($result['WERVING.Datum_belangstelling'],
+      'Een bevestigde deelnemer-registratie dit jaar moet Datum_belangstelling blokkeren ' .
+      '(poortwachter-reset), ongeacht geldige formulier-input.');
+    $this->assertNull($result['WERVING.mee_status'] ?? NULL,
+      'mee_status moet ook geblokkeerd blijven voor een bevestigde deelnemer.');
+  }
 }

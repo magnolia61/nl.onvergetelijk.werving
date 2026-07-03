@@ -228,6 +228,7 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
     $extdebug = 'werving.configure'; // Kanaal voor centrale debug-config; niveau wordt opgezocht in ozk.debug.config.php
     $today_datetime = date("Y-m-d H:i:s");
 
+
     $werving_configure_start = microtime(TRUE);
     watchdog('civicrm_timing', base_microtimer("START werving_configure [CID: $contact_id / CTX: $context]"), NULL, WATCHDOG_DEBUG);
 
@@ -276,9 +277,29 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
     $array_allpart_ditjaar      = base_find_allpart($contact_id, $mee_update_nextkamp_start)    ?: [];
     $ditjaar_pos_deel_part_id   = $array_allpart_ditjaar['result_allpart_pos_deel_part_id']     ?? 0;
     $ditjaar_pos_leid_part_id   = $array_allpart_ditjaar['result_allpart_pos_leid_part_id']     ?? 0;
+    $ditjaar_wait_deel_part_id  = $array_allpart_ditjaar['result_allpart_wait_deel_part_id']    ?? 0;
 
     $is_deelnemer_nu            = ($ditjaar_pos_deel_part_id > 0);
-    $is_te_jong                 = (isset($new_nextkamp_decimalen) && $new_nextkamp_decimalen < 17.0);
+    $is_deelnemer_wachtlijst    = ($ditjaar_wait_deel_part_id > 0);
+
+    // Poortwachter: mag deze persoon als (aankomend) leiding-kandidaat gelden? Gebruikt
+    // dezelfde gedeelde ladder als de mail-beslissing (base_bepaal_rolstatus() in
+    // nl.onvergetelijk.base), zodat de 17-jaargrens en de "bevestigd deelnemer
+    // overrult"-regel hier altijd synchroon lopen met de rest van het systeem — niet
+    // langer een eigen, apart onderhouden 17.0-vergelijking. We toetsen HYPOTHETISCH
+    // ("als er nu belangstelling getoond zou worden, wat zou de uitkomst zijn?") omdat
+    // dit precies de vraag is die de poortwachter beantwoordt: we zijn immers zelf bezig
+    // te bepalen of we datum_belangstelling wel mogen (blijven) zetten. $is_deelnemer_nu/
+    // $is_deelnemer_wachtlijst zitten al verwerkt in deze uitkomst (via ditjaardeelyes/mss),
+    // dus verderop hoeft die niet nogmaals los gecheckt te worden. Wachtlijst telt symmetrisch
+    // mee met een definitieve deelnemer-registratie (3-jul-2026, zelfde regel als bij leiding).
+    $rolstatus_kandidaat        = base_bepaal_rolstatus([
+        'leeftijd_decimalen'   => $new_nextkamp_decimalen ?? NULL,
+        'ditjaardeelyes'       => $is_deelnemer_nu ? 1 : 0,
+        'ditjaardeelmss'       => $is_deelnemer_wachtlijst ? 1 : 0,
+        'datum_belangstelling' => $today_datetime, // hypothetisch: "stel dat het nu gezet wordt"
+    ]);
+    $is_geen_leiding_kandidaat  = ($rolstatus_kandidaat['rol'] !== 'leiding');
 
     wachthond($extdebug, 2, "########################################################################");
     wachthond($extdebug, 1, "### WERVING CONFIGURE - 2.0 BEPAAL LEIDENDE WAARDEN",           "[INPUT]");
@@ -292,10 +313,15 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
     
     $val_datum_belangstelling   = $params_werving['WERVING.Datum_belangstelling']   ?? $cont['datum_belangstelling']        ?? NULL;
 
-    $val_mee_update             = $params_werving['WERVING.mee_update']             ?? $cont['mee_update']                  ?? NULL;
-    $val_mee_verwachting        = $params_werving['WERVING.mee_verwachting']        ?? $cont['mee_verwachting']             ?? NULL;
-    $val_mee_status             = $params_werving['WERVING.mee_status']             ?? $cont['mee_status']                  ?? NULL;
-    $val_mee_toelichting        = $params_werving['WERVING.mee_toelichting']        ?? $cont['mee_toelichting']             ?? NULL;
+    // DB-fallback (als veld niet in dit formulier zat): lees uit $cont met de keys
+    // zoals base_cid2cont ze teruggeeft (prefix 'werving_'). Eerder stonden hier de
+    // ongeprefixte keys ($cont['mee_status'] etc.) die base NOOIT teruggeeft → fallback
+    // was altijd NULL → elke WERVING-save zónder deze velden in de params wiste mee_status/
+    // mee_verwachting/mee_toelichting. (Fix 30-jun-2026; mee_status ontbrak ook in base_cid2cont.)
+    $val_mee_update             = $params_werving['WERVING.mee_update']             ?? $cont['werving_mee_update']          ?? NULL;
+    $val_mee_verwachting        = $params_werving['WERVING.mee_verwachting']        ?? $cont['werving_mee_verwachting']     ?? NULL;
+    $val_mee_status             = $params_werving['WERVING.mee_status']             ?? $cont['werving_mee_status']          ?? NULL;
+    $val_mee_toelichting        = $params_werving['WERVING.mee_toelichting']        ?? $cont['werving_mee_toelichting']     ?? NULL;
 
     wachthond($extdebug, 2, "########################################################################");
     wachthond($extdebug, 1, "### WERVING CONFIGURE - 3.0 AUTOMATISCHE DATUM BELANGSTELLING", "[DATUM]");
@@ -310,8 +336,9 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
     // Gebruik (int) of de ? 1 : 0 shorthand om booleans te forceren naar integers
     $heeft_belang_input     = (in_array($input_groep, $valid_leeftijdsgroepen) || in_array($input_week, $valid_kampweken)) ? 1 : 0;
 
-    if ($is_deelnemer_nu || $is_te_jong) {
-        // RESET ALLE WERVINGSVELDEN VOOR NIET-VRIJWILLIGERS
+    if ($is_geen_leiding_kandidaat) {
+        // RESET ALLE WERVINGSVELDEN VOOR NIET-VRIJWILLIGERS ($is_deelnemer_nu zit al
+        // verwerkt in $is_geen_leiding_kandidaat, zie toelichting hierboven)
         $new_datum_belangstelling   = NULL;
         $new_mee_status             = NULL;
         $val_datum_belangstelling   = NULL;
@@ -539,6 +566,7 @@ function werving_civicrm_configure(int $contact_id, string $context = 'direct', 
     wachthond($extdebug, 3, "WERVING [CONFIGURE] duur totaal: {$total_werving_configure_duur}s");
     watchdog('civicrm_timing', base_microtimer("EINDE werving_configure"), NULL, WATCHDOG_DEBUG);
 
+
     return $data_to_inject;
 }
 
@@ -630,35 +658,47 @@ function werving_civicrm_custom($op, $groupID, $entityID, &$params): void {
     // mee_status niet bij elke route). Hier stellen we het in op 'onbekend' als:
     // - datum_belangstelling is onlangs ingevuld (< 1 jaar geleden)
     // - mee_status is nog leeg
-    $cont_fresh = function_exists('base_cid2cont') ? base_cid2cont($entityID, TRUE) : [];
-    if (!empty($cont_fresh)) {
-        $val_mee_status = $cont_fresh['mee_status'] ?? NULL;
-        $val_datum_belang = $cont_fresh['datum_belangstelling'] ?? NULL;
+    // Lees mee_status en mee_verwachting AUTORITATIEF uit de DB via APIv4.
+    //
+    // BELANGRIJK (bugfix 30-jun-2026): hier stond eerst base_cid2cont($entityID, TRUE).
+    // In deze post-commit hook gaf die — ondanks force_fresh — een STALE/lege mee_status
+    // terug (cache-timing in de hookstack). Daardoor "initialiseerde" de logica hieronder
+    // een zojuist gezette status (bv. 'gaatmee', door CiviRule of back-office) ten onrechte
+    // terug naar 'onbekend' via een extra Contact.update — die op zijn beurt customPre +
+    // configure opnieuw afvuurde en de waarde definitief overschreef. De directe APIv4-get
+    // (zoals Datum_belangstelling hierboven op r604) leest wél de zojuist gecommitte waarde.
+    $mee_now = civicrm_api4('Contact', 'get', [
+        'checkPermissions' => FALSE,
+        'select'           => ['WERVING.mee_status', 'WERVING.mee_verwachting'],
+        'where'            => [['id', '=', $entityID]],
+    ])->first();
 
-        // Check: is mee_status/mee_verwachting leeg EN is datum_belangstelling recent (< 1 jaar)?
-        if ((!empty($val_mee_status) || !empty($val_datum_belang)) && !empty($val_datum_belang)) {
-            $days_since = (int) date_diff(date_create($val_datum_belang), date_create('now'))->format('%a');
-            if ($days_since < 365) {
-                $update_vals = [];
+    $val_mee_status      = $mee_now['WERVING.mee_status']      ?? NULL;
+    $val_mee_verwachting = $mee_now['WERVING.mee_verwachting'] ?? NULL;
 
-                if (empty($val_mee_status)) {
-                    $update_vals['WERVING.mee_status'] = 'onbekend';
-                    wachthond($extdebug, 1, "MEE_STATUS INITIALISATIE", "Datum belangstelling is recent ($days_since dagen), mee_status was leeg → zet op 'onbekend'");
-                }
 
-                if (empty($cont_fresh['mee_verwachting'] ?? NULL)) {
-                    $update_vals['WERVING.mee_verwachting'] = 'misschien';
-                    wachthond($extdebug, 1, "MEE_VERWACHTING INITIALISATIE", "Datum belangstelling is recent, mee_verwachting was leeg → zet op 'misschien'");
-                }
+    // Initialiseer alleen wanneer de waarde ECHT leeg is én de belangstelling recent (< 1 jaar).
+    // $datum_belang is hierboven (r604) autoritatief gelezen en gegarandeerd gevuld (early return r610).
+    $days_since = (int) date_diff(date_create($datum_belang), date_create('now'))->format('%a');
+    if ($days_since < 365) {
+        $update_vals = [];
 
-                if (!empty($update_vals)) {
-                    civicrm_api4('Contact', 'update', [
-                        'checkPermissions' => FALSE,
-                        'values' => array_merge(['id' => $entityID], $update_vals),
-                    ]);
-                    wachthond($extdebug, 3, "mee status/verwachting update", "OK");
-                }
-            }
+        if (empty($val_mee_status)) {
+            $update_vals['WERVING.mee_status'] = 'onbekend';
+            wachthond($extdebug, 1, "MEE_STATUS INITIALISATIE", "Datum belangstelling is recent ($days_since dagen), mee_status was leeg → zet op 'onbekend'");
+        }
+
+        if (empty($val_mee_verwachting)) {
+            $update_vals['WERVING.mee_verwachting'] = 'misschien';
+            wachthond($extdebug, 1, "MEE_VERWACHTING INITIALISATIE", "Datum belangstelling is recent, mee_verwachting was leeg → zet op 'misschien'");
+        }
+
+        if (!empty($update_vals)) {
+            civicrm_api4('Contact', 'update', [
+                'checkPermissions' => FALSE,
+                'values' => array_merge(['id' => $entityID], $update_vals),
+            ]);
+            wachthond($extdebug, 3, "mee status/verwachting update", "OK");
         }
     }
 
@@ -704,6 +744,7 @@ function werving_civicrm_config(&$config): void {
  */
 function werving_civicrm_install(): void {
     _werving_civix_civicrm_install();
+    _werving_register_civirules_conditions();
 }
 
 /**
@@ -711,4 +752,50 @@ function werving_civicrm_install(): void {
  */
 function werving_civicrm_enable(): void {
     _werving_civix_civicrm_enable();
+    _werving_register_civirules_conditions();
+}
+
+/**
+ * Registreert de custom CiviRules-condities van de Werving-module.
+ *
+ * Idempotent: maakt de conditie alleen aan als die nog niet bestaat (op class_name).
+ * Wordt aangeroepen vanuit install én enable, zodat (her)installatie de conditie
+ * altijd herstelt. CiviRules-condities leven in de tabel civirule_condition; we
+ * gebruiken de APIv4-entity CiviRulesCondition.
+ */
+function _werving_register_civirules_conditions(): void {
+
+    $conditions = [
+        [
+            'name'       => 'werving_belangstelling_fiscaaljaar',
+            'label'      => 'WERVING: Datum belangstelling valt in huidig boekjaar',
+            'class_name' => 'CRM_Werving_CivirulesCondition_BelangstellingFiscaaljaar',
+        ],
+    ];
+
+    foreach ($conditions as $condition) {
+        try {
+            $bestaat = civicrm_api4('CiviRulesCondition', 'get', [
+                'checkPermissions' => FALSE,
+                'select'           => ['id'],
+                'where'            => [['class_name', '=', $condition['class_name']]],
+            ])->count();
+
+            if ($bestaat == 0) {
+                civicrm_api4('CiviRulesCondition', 'create', [
+                    'checkPermissions' => FALSE,
+                    'values'           => [
+                        'name'       => $condition['name'],
+                        'label'      => $condition['label'],
+                        'class_name' => $condition['class_name'],
+                        'is_active'  => TRUE,
+                    ],
+                ]);
+            }
+        }
+        catch (Exception $e) {
+            // Niet fataal: registratie mag de (de)activatie van de extensie niet blokkeren.
+            Civi::log()->warning('werving: registratie CiviRules-conditie mislukt: ' . $e->getMessage());
+        }
+    }
 }
